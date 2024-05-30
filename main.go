@@ -204,29 +204,31 @@ func main() {
 			}
 		}
 
-		// submit ft entries
-		ft_submit_req := datastruct.FaultTolerancePhaseReportResultRequest{
-			ShufflerID:      client.ID,
-			DecryptedPieces: []datastruct.SecreteShareDecrypt{},
-		}
-
-		for i := 0; i < len(ft_reply.AbsentClients); i++ {
-			ft_piece, err := services.ClientReportDecryptedSecret(client, ft_reply.AbsentClients[i], ft_reply.Database)
-			if err != nil {
-				panic(err)
+		if ft_reply.FTNeeded {
+			// submit ft entries
+			ft_submit_req := datastruct.FaultTolerancePhaseReportResultRequest{
+				ShufflerID:      client.ID,
+				DecryptedPieces: []datastruct.SecreteShareDecrypt{},
 			}
-			ft_submit_req.DecryptedPieces = append(ft_submit_req.DecryptedPieces, *ft_piece)
-		}
 
-		var ft_submit_reply datastruct.FaultTolerancePhaseReportResultReply
-
-		for true {
-			err := network_interface.Call("CTLogCheckerAuditor.FaultTolerancePhaseReportResult", ft_submit_req, &ft_submit_reply)
-			if err != nil {
-				log.Fatal("reveal error:", err)
+			for i := 0; i < len(ft_reply.AbsentClients); i++ {
+				ft_piece, err := services.ClientReportDecryptedSecret(client, ft_reply.AbsentClients[i], ft_reply.Database)
+				if err != nil {
+					panic(err)
+				}
+				ft_submit_req.DecryptedPieces = append(ft_submit_req.DecryptedPieces, *ft_piece)
 			}
-			if ft_submit_reply.Status {
-				break
+
+			var ft_submit_reply datastruct.FaultTolerancePhaseReportResultReply
+
+			for true {
+				err := network_interface.Call("CTLogCheckerAuditor.FaultTolerancePhaseReportResult", ft_submit_req, &ft_submit_reply)
+				if err != nil {
+					log.Fatal("reveal error:", err)
+				}
+				if ft_submit_reply.Status {
+					break
+				}
 			}
 		}
 

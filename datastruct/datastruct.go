@@ -217,6 +217,7 @@ type FaultTolerancePhaseAcquireDatabaseRequest struct {
 
 type FaultTolerancePhaseAcquireDatabaseReply struct {
 	Status        bool
+	FTNeeded      bool
 	AbsentClients []int
 	Database      Database
 }
