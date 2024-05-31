@@ -230,3 +230,19 @@ type FaultTolerancePhaseReportResultRequest struct {
 type FaultTolerancePhaseReportResultReply struct {
 	Status bool
 }
+
+type ClientStats struct {
+	ClientID            int
+	InitalReportingTime float64
+	SecreteShareTime    float64
+	ShuffleTime         float64
+	RevealTime          float64
+	FTTime              float64
+	UploadBytes         int
+	DownloadBytes       int
+	Entry               []byte
+}
+
+type ReportStatsReply struct {
+	Status bool
+}
