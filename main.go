@@ -58,10 +58,23 @@ func main() {
 	}
 	var reply datastruct.RegistrationResponse
 	// var reply int
-	err = network_interface.Call("CTLogCheckerAuditor.RegisterClient", req, &reply)
-	if err != nil {
-		log.Fatal("arith error:", err)
+
+	register_successful := false
+
+	for !register_successful {
+		err = network_interface.Call("CTLogCheckerAuditor.RegisterClient", req, &reply)
+		if err != nil {
+			// log.Fatal("arith error:", err)
+		}
+		if reply.Status {
+			register_successful = true
+		}
+
 	}
+	// err = network_interface.Call("CTLogCheckerAuditor.RegisterClient", req, &reply)
+	// if err != nil {
+	// 	log.Fatal("arith error:", err)
+	// }
 	// fmt.Println(reply.AssignedID)
 	client.ID = reply.AssignedID
 	stats.ClientID = client.ID
