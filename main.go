@@ -191,24 +191,7 @@ func main() {
 	/// acquire the lock and download the database
 
 	rpc.Register(client)
-
-	// Listen on a TCP port
-	l, err := net.Listen("tcp", ":80")
-	if err != nil {
-		log.Fatal("listen error:", err)
-	}
-	defer l.Close() // Ensure the listener is closed after handling the request
-
-	// Accept exactly one connection
-	conn, err := l.Accept()
-	if err != nil {
-		log.Fatal("accept error:", err)
-	}
-	defer conn.Close() // Ensure the connection is closed after serving
-
-	// Serve RPC on the accepted connection
-	rpc.ServeConn(conn)
-
+	AcceptReq()
 	// accquire_lock := false
 
 	// shuffle_accquire_lock_req := datastruct.ShufflePhaseAccquireLockRequest{
@@ -418,4 +401,25 @@ func main() {
 			status_reported = true
 		}
 	}
+}
+
+func AcceptReq() error {
+
+	// Listen on a TCP port
+	l, err := net.Listen("tcp", ":80")
+	if err != nil {
+		log.Fatal("listen error:", err)
+	}
+	defer l.Close() // Ensure the listener is closed after handling the request
+
+	// Accept exactly one connection
+	conn, err := l.Accept()
+	if err != nil {
+		log.Fatal("accept error:", err)
+	}
+	defer conn.Close() // Ensure the connection is closed after serving
+
+	// Serve RPC on the accepted connection
+	rpc.ServeConn(conn)
+	return nil
 }
