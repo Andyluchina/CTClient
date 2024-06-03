@@ -556,10 +556,10 @@ func ClientGenerateChallengeDecryptionProof_NonInteractive(
 func (reportingClient *Client) ClientShuffle(req *datastruct.ShufflePhaseAuditorRequest, reply *datastruct.ShufflePhaseAuditorReply) error {
 
 	start := time.Now()
-	reply = &datastruct.ShufflePhaseAuditorReply{
-		ShufflerID: reportingClient.ID,
-		ZKProofs:   datastruct.ZKRecords{},
-	}
+
+	reply.ShufflerID = reportingClient.ID
+
+	reply.ZKProofs = datastruct.ZKRecords{}
 
 	reply.ZKProofs.ShufflerID = reportingClient.ID
 
