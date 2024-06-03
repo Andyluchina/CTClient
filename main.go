@@ -6,7 +6,10 @@ import (
 	"crypto/ecdh"
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"log"
+	"net"
+	"net/http"
 	"net/rpc"
 	"os"
 	"strconv"
@@ -42,19 +45,35 @@ func main() {
 	}
 
 	client := services.NewClient(curve)
+
+	// get my ip
+	response, err := http.Get("https://api.ipify.org")
+	if err != nil {
+		fmt.Println("Error fetching IP: ", err)
+		return
+	}
+	defer response.Body.Close()
+
+	ip, err := ioutil.ReadAll(response.Body)
+	if err != nil {
+		fmt.Println("Error reading response: ", err)
+		return
+	}
+
+	fmt.Println("Client IP address:", string(ip))
+	client.MyIP = string(ip)
 	// fmt.Println(client.ReportingValue)
 	client.Shamir_curve = curves.P256()
 
 	stats := datastruct.ClientStats{
-		UploadBytes:   0,
-		DownloadBytes: 0,
-		Entry:         client.ReportingValue,
+		Entry: client.ReportingValue,
 	}
 	// Synchronous call
 	req := datastruct.RegistrationRequest{
 		H_shuffle: client.H_shuffle,
 		G_shuffle: client.G_shuffle,
 		DH_Pub_H:  client.DH_Pub_H,
+		IP:        client.MyIP,
 	}
 	var reply datastruct.RegistrationResponse
 	// var reply int
@@ -99,7 +118,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("Error serializing to JSON: %v", err)
 	}
-	stats.UploadBytes += len(report_data_up)
+	stats.UploadBytesInitalReporting = len(report_data_up)
 	/// report the initial entry
 	var init_report_reply datastruct.InitalReportingReply
 	report_s := false
@@ -119,7 +138,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("Error serializing to JSON: %v", err)
 	}
-	stats.DownloadBytes += len(report_data_down)
+	stats.DownloadBytesInitalReporting = len(report_data_down)
 
 	// ReportInitialEntrySecreteShare
 	if len(Shuffle_PubKeys) != int(client.TotalClients) {
@@ -149,7 +168,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("Error serializing to JSON: %v", err)
 	}
-	stats.UploadBytes += len(init_report_secrete_up)
+	stats.UploadBytesSecreteShare = len(init_report_secrete_up)
 
 	report_s_secrete := false
 	for !report_s_secrete {
@@ -166,63 +185,85 @@ func main() {
 	if err != nil {
 		log.Fatalf("Error serializing to JSON: %v", err)
 	}
-	stats.DownloadBytes += len(init_report_secrete_down)
+	stats.DownloadBytesSecreteShare = len(init_report_secrete_down)
 
 	/// perform the shuffle
 	/// acquire the lock and download the database
-	accquire_lock := false
 
-	shuffle_accquire_lock_req := datastruct.ShufflePhaseAccquireLockRequest{
-		ShufflerID: client.ID,
-	}
+	rpc.Register(client)
 
-	var shuffle_accquire_lock_reply datastruct.ShufflePhaseAccquireLockReply
-	for !accquire_lock {
-		err = network_interface.Call("CTLogCheckerAuditor.ShufflePhaseAccquireLock", shuffle_accquire_lock_req, &shuffle_accquire_lock_reply)
-		if err != nil {
-			log.Fatal("shuffle call error", err)
-		}
-		if shuffle_accquire_lock_reply.Status {
-			accquire_lock = true
-			fmt.Println("lock acquired ", client.ID)
-		}
-	}
-
-	shuffle_accquire_lock_down, err := json.Marshal(shuffle_accquire_lock_reply)
+	// Listen on a TCP port
+	l, err := net.Listen("tcp", ":80")
 	if err != nil {
-		log.Fatalf("Error serializing to JSON: %v", err)
+		log.Fatal("listen error:", err)
 	}
-	stats.DownloadBytes += len(shuffle_accquire_lock_down)
-	/// perform the shuffle
-	var shuffle_res_reply datastruct.ShufflePhasePerformShuffleResultReply
-	// fmt.Println(shuffle_accquire_lock_reply.Database)
 
-	shuffle_start := time.Now()
-
-	shuffle_res_req, err := services.ClientShuffle(client, shuffle_accquire_lock_reply.Database)
-
-	shuffle_elapsed := time.Since(shuffle_start) // Calculate elapsed time
-	shuffle_elapsedSeconds := shuffle_elapsed.Seconds()
-	stats.ShuffleTime = shuffle_elapsedSeconds
+	// Accept only one connection
+	conn, err := l.Accept()
 	if err != nil {
-		log.Fatal("shuffle error:", err)
-	}
-	fmt.Println("Shuffling client", shuffle_res_req.ShufflerID)
-	/// upload the updated database and zk proofs
-	err = network_interface.Call("CTLogCheckerAuditor.ShufflePhasePerformShuffleResult", shuffle_res_req, &shuffle_res_reply)
-	shuffle_res_req_up, err := json.Marshal(shuffle_res_req)
-	if err != nil {
-		log.Fatalf("Error serializing to JSON: %v", err)
-	}
-	stats.UploadBytes += len(shuffle_res_req_up)
-	/// getting a ack from the auditor
-	if err != nil {
-		log.Fatal("network error:", err)
+		log.Fatal("accept error:", err)
 	}
 
-	if !shuffle_res_reply.Status {
-		panic("shuffle tempered with")
-	}
+	// Serve RPC on the accepted connection
+	rpc.ServeConn(conn)
+	conn.Close() // Close the connection after serving
+
+	// Optionally close the listener if no more connections are expected
+	l.Close()
+
+	// accquire_lock := false
+
+	// shuffle_accquire_lock_req := datastruct.ShufflePhaseAccquireLockRequest{
+	// 	ShufflerID: client.ID,
+	// }
+
+	// var shuffle_accquire_lock_reply datastruct.ShufflePhaseAccquireLockReply
+	// for !accquire_lock {
+	// 	err = network_interface.Call("CTLogCheckerAuditor.ShufflePhaseAccquireLock", shuffle_accquire_lock_req, &shuffle_accquire_lock_reply)
+	// 	if err != nil {
+	// 		log.Fatal("shuffle call error", err)
+	// 	}
+	// 	if shuffle_accquire_lock_reply.Status {
+	// 		accquire_lock = true
+	// 		fmt.Println("lock acquired ", client.ID)
+	// 	}
+	// }
+
+	// shuffle_accquire_lock_down, err := json.Marshal(shuffle_accquire_lock_reply)
+	// if err != nil {
+	// 	log.Fatalf("Error serializing to JSON: %v", err)
+	// }
+	// stats.DownloadBytes += len(shuffle_accquire_lock_down)
+	// /// perform the shuffle
+	// var shuffle_res_reply datastruct.ShufflePhasePerformShuffleResultReply
+	// // fmt.Println(shuffle_accquire_lock_reply.Database)
+
+	// shuffle_start := time.Now()
+
+	// shuffle_res_req, err := client.ClientShuffle(shuffle_accquire_lock_reply.Database)
+
+	// shuffle_elapsed := time.Since(shuffle_start) // Calculate elapsed time
+	// shuffle_elapsedSeconds := shuffle_elapsed.Seconds()
+	// stats.ShuffleTime = shuffle_elapsedSeconds
+	// if err != nil {
+	// 	log.Fatal("shuffle error:", err)
+	// }
+	// fmt.Println("Shuffling client", shuffle_res_req.ShufflerID)
+	// /// upload the updated database and zk proofs
+	// err = network_interface.Call("CTLogCheckerAuditor.ShufflePhasePerformShuffleResult", shuffle_res_req, &shuffle_res_reply)
+	// shuffle_res_req_up, err := json.Marshal(shuffle_res_req)
+	// if err != nil {
+	// 	log.Fatalf("Error serializing to JSON: %v", err)
+	// }
+	// stats.UploadBytes += len(shuffle_res_req_up)
+	// /// getting a ack from the auditor
+	// if err != nil {
+	// 	log.Fatal("network error:", err)
+	// }
+
+	// if !shuffle_res_reply.Status {
+	// 	panic("shuffle tempered with")
+	// }
 
 	if participate_in_reveal_boolean {
 		// perform reveal
@@ -248,7 +289,7 @@ func main() {
 		if err != nil {
 			log.Fatalf("Error serializing to JSON: %v", err)
 		}
-		stats.DownloadBytes += len(reveal_down)
+		stats.DownloadBytesReveal += len(reveal_down)
 
 		// perform reveal
 		reveal_start := time.Now()
@@ -267,7 +308,7 @@ func main() {
 		if err != nil {
 			log.Fatalf("Error serializing to JSON: %v", err)
 		}
-		stats.UploadBytes += len(reveal_res_req_up)
+		stats.UploadBytesReveal += len(reveal_res_req_up)
 
 		var reveal_res_reply datastruct.RevealPhaseReportRevealReply
 
@@ -302,7 +343,7 @@ func main() {
 		if err != nil {
 			log.Fatalf("Error serializing to JSON: %v", err)
 		}
-		stats.DownloadBytes += len(ft_reply_down)
+		stats.DownloadBytesFT += len(ft_reply_down)
 
 		if ft_reply.FTNeeded {
 			// submit ft entries
@@ -341,7 +382,7 @@ func main() {
 			if err != nil {
 				log.Fatalf("Error serializing to JSON: %v", err)
 			}
-			stats.UploadBytes += len(ft_submit_req_up)
+			stats.UploadBytesFT += len(ft_submit_req_up)
 		}
 
 	}
@@ -352,8 +393,10 @@ func main() {
 		fmt.Print("Client ", client.ID, " protocol completed without reveal\n")
 	}
 
-	fmt.Println(stats)
-
+	// fmt.Println(stats)
+	stats.ShuffleTime = client.ShuffleTime
+	stats.DownloadBytesShuffle = client.ShuffleDownload
+	stats.UploadBytesShuffle = client.ShuffleUpload
 	// report the stats to the collector
 	collector_interface, err := rpc.DialHTTP("tcp", collector_address)
 
@@ -365,6 +408,8 @@ func main() {
 	report_stats_req := stats
 
 	status_reported := false
+
+	fmt.Println(stats)
 
 	for !status_reported {
 		err = collector_interface.Call("Collector.ReportStatsClient", report_stats_req, &report_stats_reply)
