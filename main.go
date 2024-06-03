@@ -197,19 +197,17 @@ func main() {
 	if err != nil {
 		log.Fatal("listen error:", err)
 	}
+	defer l.Close() // Ensure the listener is closed after handling the request
 
-	// Accept only one connection
+	// Accept exactly one connection
 	conn, err := l.Accept()
 	if err != nil {
 		log.Fatal("accept error:", err)
 	}
+	defer conn.Close() // Ensure the connection is closed after serving
 
 	// Serve RPC on the accepted connection
 	rpc.ServeConn(conn)
-	conn.Close() // Close the connection after serving
-
-	// Optionally close the listener if no more connections are expected
-	l.Close()
 
 	// accquire_lock := false
 
