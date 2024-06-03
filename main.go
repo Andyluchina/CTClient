@@ -191,7 +191,15 @@ func main() {
 	/// acquire the lock and download the database
 
 	rpc.Register(client)
-	AcceptReq()
+
+	shuffle_completed := false
+
+	for !shuffle_completed {
+		AcceptReq()
+		if client.ShuffleTime > 0 {
+			shuffle_completed = true
+		}
+	}
 	// accquire_lock := false
 
 	// shuffle_accquire_lock_req := datastruct.ShufflePhaseAccquireLockRequest{
@@ -245,6 +253,8 @@ func main() {
 	// if !shuffle_res_reply.Status {
 	// 	panic("shuffle tempered with")
 	// }
+
+	fmt.Println("Finished Shuffling")
 
 	if participate_in_reveal_boolean {
 		// perform reveal
@@ -421,5 +431,6 @@ func AcceptReq() error {
 
 	// Serve RPC on the accepted connection
 	rpc.ServeConn(conn)
+
 	return nil
 }
