@@ -128,7 +128,6 @@ type RegistrationRequest struct {
 	H_shuffle []byte
 	G_shuffle []byte
 	DH_Pub_H  []byte
-	IP        string
 }
 
 type RegistrationResponse struct {
@@ -136,6 +135,24 @@ type RegistrationResponse struct {
 	AssignedID      int
 	TotalClients    uint32
 	RevealThreshold uint32
+}
+
+type Client struct {
+	ID              int
+	ReportingKey    *ecdh.PrivateKey
+	ShuffleKey      *ecdh.PrivateKey
+	ReportingValue  []byte
+	Curve           ecdh.Curve
+	G_report        []byte /// init point needs to be different for every client
+	H_report        []byte
+	G_shuffle       []byte /// init point needs to be different for every client
+	H_shuffle       []byte
+	DH_Pub_H        []byte /// pub key for secrete sharing
+	DH_Pub_private  []byte
+	InitialG_ri0    []byte
+	TotalClients    uint32
+	RevealThreshold uint32
+	Shamir_curve    *curves.Curve
 }
 
 type InitalReportingRequest struct {
@@ -157,35 +174,24 @@ type InitalReportingSecreteSharingReply struct {
 	Status bool
 }
 
-// type ShufflePhaseAccquireLockRequest struct {
-// 	ShufflerID int /// you should have some ways to ensure that the client does not lie about this
-// }
+type ShufflePhaseAccquireLockRequest struct {
+	ShufflerID int /// you should have some ways to ensure that the client does not lie about this
+}
 
-// type ShufflePhaseAccquireLockReply struct {
-// 	Status   bool
-// 	Database Database
-// }
-
-// type ShufflePhasePerformShuffleResultRequest struct {
-// 	ShufflerID int
-// 	Database   Database
-// 	ZKProofs   ZKRecords
-// }
-
-type ShufflePhaseAuditorRequest struct {
+type ShufflePhaseAccquireLockReply struct {
+	Status   bool
 	Database Database
 }
 
-type ShufflePhaseAuditorReply struct {
-	Status     bool
+type ShufflePhasePerformShuffleResultRequest struct {
 	ShufflerID int
 	Database   Database
 	ZKProofs   ZKRecords
 }
 
-// type ShufflePhasePerformShuffleResultReply struct {
-// 	Status bool
-// }
+type ShufflePhasePerformShuffleResultReply struct {
+	Status bool
+}
 
 type RevealPhaseAcquireDatabaseRequest struct {
 	ShufflerID int
@@ -194,6 +200,7 @@ type RevealPhaseAcquireDatabaseRequest struct {
 type RevealPhaseAcquireDatabaseReply struct {
 	Status   bool
 	Database Database
+	ZK_info  []*ZKRecords
 }
 
 type RevealPhaseReportRevealRequest struct {
@@ -226,23 +233,15 @@ type FaultTolerancePhaseReportResultReply struct {
 }
 
 type ClientStats struct {
-	ClientID                     int
-	InitalReportingTime          float64
-	SecreteShareTime             float64
-	ShuffleTime                  float64
-	RevealTime                   float64
-	FTTime                       float64
-	Entry                        []byte
-	UploadBytesInitalReporting   int
-	DownloadBytesInitalReporting int
-	UploadBytesSecreteShare      int
-	DownloadBytesSecreteShare    int
-	UploadBytesShuffle           int
-	DownloadBytesShuffle         int
-	UploadBytesReveal            int
-	DownloadBytesReveal          int
-	UploadBytesFT                int
-	DownloadBytesFT              int
+	ClientID            int
+	InitalReportingTime float64
+	SecreteShareTime    float64
+	ShuffleTime         float64
+	RevealTime          float64
+	FTTime              float64
+	UploadBytes         int
+	DownloadBytes       int
+	Entry               []byte
 }
 
 type ReportStatsReply struct {
