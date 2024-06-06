@@ -10,17 +10,42 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/binary"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
 	"math/big"
+	"time"
 
 	"filippo.io/nistec"
+	"github.com/coinbase/kryptology/pkg/core/curves"
 	"github.com/coinbase/kryptology/pkg/sharing"
 )
 
+type Client struct {
+	ID              int
+	ReportingKey    *ecdh.PrivateKey
+	ShuffleKey      *ecdh.PrivateKey
+	ReportingValue  []byte
+	Curve           ecdh.Curve
+	G_report        []byte /// init point needs to be different for every client
+	H_report        []byte
+	G_shuffle       []byte /// init point needs to be different for every client
+	H_shuffle       []byte
+	DH_Pub_H        []byte /// pub key for secrete sharing
+	DH_Pub_private  []byte
+	InitialG_ri0    []byte
+	TotalClients    uint32
+	RevealThreshold uint32
+	Shamir_curve    *curves.Curve
+	MyIP            string
+	ShuffleTime     float64
+	ShuffleUpload   int
+	ShuffleDownload int
+}
+
 // NewAuditor creates a new Auditor instance
-func NewClient(curve ecdh.Curve) *datastruct.Client {
+func NewClient(curve ecdh.Curve) *Client {
 	k_report, err := curve.GenerateKey(rand.Reader)
 	if err != nil {
 		panic(err)
@@ -50,7 +75,7 @@ func NewClient(curve ecdh.Curve) *datastruct.Client {
 	dh_pub_h := dh_pub.PublicKey().Bytes()
 	dh_pub_pri := dh_pub.Bytes()
 
-	return &datastruct.Client{
+	return &Client{
 		ReportingKey:   k_report,
 		ShuffleKey:     k_shuffle,
 		ReportingValue: elgamal.Generate_certificate(),
@@ -64,7 +89,7 @@ func NewClient(curve ecdh.Curve) *datastruct.Client {
 	}
 }
 
-func CreateInitialEntry(client *datastruct.Client) (*datastruct.ReportingEntry, error) {
+func CreateInitialEntry(client *Client) (*datastruct.ReportingEntry, error) {
 	// segment the certficate with chaining
 	segments, err := segmentBitsWithPadding_MapOnCurve(client.ReportingValue)
 	if err != nil {
@@ -230,7 +255,7 @@ func LocatePublicKeyWithID(clientID int, ShufflerPublicKeys []*datastruct.Shuffl
 }
 
 // /////screte sharing ///////
-func SecreteShare(reportingClient *datastruct.Client, Shuffle_PubKeys []*datastruct.ShufflePubKeys) ([]*datastruct.SecreteSharePoint, error) {
+func SecreteShare(reportingClient *Client, Shuffle_PubKeys []*datastruct.ShufflePubKeys) ([]*datastruct.SecreteSharePoint, error) {
 
 	/// start secrete sharing and store it on the auditor
 	// secrete pieces has to be bigger than threshold
@@ -319,7 +344,7 @@ func ExtractG_ri1sFromEntries(database *datastruct.Database) [][]byte {
 }
 
 func ClientGenerateChallengeEncryptionProof_NonInteractive(
-	shuffling_client *datastruct.Client,
+	shuffling_client *Client,
 	X_originals [][]byte,
 	Y_originals [][]byte,
 	X_primes [][]byte,
@@ -446,7 +471,7 @@ func flattenBytes(twoD [][]byte) []byte {
 
 // // generate the non interactive challenge, taking account of all the public parameters
 func ClientGenerateChallengeShufflingProof_NonInteractive_Groth_And_Lu(
-	shuffling_client *datastruct.Client,
+	shuffling_client *Client,
 	orginal_entries [][][]byte,
 	shuffled_entries [][][]byte,
 	X_primes_encrypted_and_permutated [][]byte,
@@ -502,7 +527,7 @@ func ClientGenerateChallengeShufflingProof_NonInteractive_Groth_And_Lu(
 }
 
 func ClientGenerateChallengeDecryptionProof_NonInteractive(
-	shuffling_client *datastruct.Client,
+	shuffling_client *Client,
 	rG_x [][]byte,
 	rG_y [][]byte,
 ) [][]byte {
@@ -528,14 +553,17 @@ func ClientGenerateChallengeDecryptionProof_NonInteractive(
 	return c
 }
 
-func ClientShuffle(reportingClient *datastruct.Client, database datastruct.Database) (datastruct.ShufflePhasePerformShuffleResultRequest, error) {
+func (reportingClient *Client) ClientShuffle(req *datastruct.ShufflePhaseAuditorRequest, reply *datastruct.ShufflePhaseAuditorReply) error {
 
-	response := datastruct.ShufflePhasePerformShuffleResultRequest{
-		ShufflerID: reportingClient.ID,
-		ZKProofs:   datastruct.ZKRecords{},
-	}
+	start := time.Now()
 
-	response.ZKProofs.ShufflerID = reportingClient.ID
+	reply.ShufflerID = reportingClient.ID
+
+	reply.ZKProofs = datastruct.ZKRecords{}
+
+	reply.ZKProofs.ShufflerID = reportingClient.ID
+
+	database := req.Database
 
 	X_originals := ExtractH_r_i1sFromEntries(&database)
 	Y_originals := ExtractG_ri1sFromEntries(&database)
@@ -566,14 +594,16 @@ func ClientShuffle(reportingClient *datastruct.Client, database datastruct.Datab
 		rolled_H_ri1_ri_1_prime, err := elgamal.ECDH_bytes(database.Entries[i].H_r_i1, r_i_1_prime)
 		if err != nil {
 			log.Fatalf("%v", err)
-			return datastruct.ShufflePhasePerformShuffleResultRequest{}, err
+			reply.Status = false
+			return err
 		}
 
 		// roll the g_r_i1 with r_i_1_prime
 		rolled_g_ri1_ri_1_prime, err := elgamal.ECDH_bytes(database.Entries[i].G_ri1, r_i_1_prime)
 		if err != nil {
 			log.Fatalf("%v", err)
-			return datastruct.ShufflePhasePerformShuffleResultRequest{}, err
+			reply.Status = false
+			return err
 		}
 
 		alphas_r_i_1_prime = append(alphas_r_i_1_prime, r_i_1_prime)
@@ -589,24 +619,28 @@ func ClientShuffle(reportingClient *datastruct.Client, database datastruct.Datab
 		H_beta, err := elgamal.ECDH_bytes(reportingClient.H_shuffle, beta)
 		if err != nil {
 			log.Fatalf("%v", err)
-			return datastruct.ShufflePhasePerformShuffleResultRequest{}, err
+			reply.Status = false
+			return err
 		}
 		H_Gamma, err := elgamal.ECDH_bytes(reportingClient.H_shuffle, gamma)
 		if err != nil {
 			log.Fatalf("%v", err)
-			return datastruct.ShufflePhasePerformShuffleResultRequest{}, err
+			reply.Status = false
+			return err
 		}
 
 		X_prime, err := elgamal.Encrypt(X_alpha, H_beta)
 		if err != nil {
 			log.Fatalf("%v", err)
-			return datastruct.ShufflePhasePerformShuffleResultRequest{}, err
+			reply.Status = false
+			return err
 		}
 		X_primes = append(X_primes, X_prime)
 		Y_prime, err := elgamal.Encrypt(Y_alpha, H_Gamma)
 		if err != nil {
 			log.Fatalf("%v", err)
-			return datastruct.ShufflePhasePerformShuffleResultRequest{}, err
+			reply.Status = false
+			return err
 		}
 		Y_primes = append(Y_primes, Y_prime)
 
@@ -615,7 +649,8 @@ func ClientShuffle(reportingClient *datastruct.Client, database datastruct.Datab
 		X_r1, err := elgamal.ECDH_bytes(database.Entries[i].H_r_i1, r1)
 		if err != nil {
 			log.Fatalf("%v", err)
-			return datastruct.ShufflePhasePerformShuffleResultRequest{}, err
+			reply.Status = false
+			return err
 		}
 		r1s = append(r1s, r1)
 
@@ -623,7 +658,8 @@ func ClientShuffle(reportingClient *datastruct.Client, database datastruct.Datab
 		H_r2, err := elgamal.ECDH_bytes(reportingClient.H_shuffle, r2)
 		if err != nil {
 			log.Fatalf("%v", err)
-			return datastruct.ShufflePhasePerformShuffleResultRequest{}, err
+			reply.Status = false
+			return err
 		}
 		r2s = append(r2s, r2)
 
@@ -631,21 +667,24 @@ func ClientShuffle(reportingClient *datastruct.Client, database datastruct.Datab
 		I1, err := elgamal.Encrypt(X_r1, H_r2)
 		if err != nil {
 			log.Fatalf("%v", err)
-			return datastruct.ShufflePhasePerformShuffleResultRequest{}, err
+			reply.Status = false
+			return err
 		}
 		I1s = append(I1s, I1)
 
 		Y_r1, err := elgamal.ECDH_bytes(database.Entries[i].G_ri1, r1)
 		if err != nil {
 			log.Fatalf("%v", err)
-			return datastruct.ShufflePhasePerformShuffleResultRequest{}, err
+			reply.Status = false
+			return err
 		}
 
 		r3 := elgamal.Generate_Random_Dice_seed(reportingClient.Curve)
 		H_r3, err := elgamal.ECDH_bytes(reportingClient.H_shuffle, r3)
 		if err != nil {
 			log.Fatalf("%v", err)
-			return datastruct.ShufflePhasePerformShuffleResultRequest{}, err
+			reply.Status = false
+			return err
 		}
 		r3s = append(r3s, r3)
 
@@ -653,7 +692,8 @@ func ClientShuffle(reportingClient *datastruct.Client, database datastruct.Datab
 		I2, err := elgamal.Encrypt(Y_r1, H_r3)
 		if err != nil {
 			log.Fatalf("%v", err)
-			return datastruct.ShufflePhasePerformShuffleResultRequest{}, err
+			reply.Status = false
+			return err
 		}
 		I2s = append(I2s, I2)
 
@@ -688,16 +728,16 @@ func ClientShuffle(reportingClient *datastruct.Client, database datastruct.Datab
 	}
 
 	// record the proofs
-	response.ZKProofs.EncryptionProof.Cs = cs
-	response.ZKProofs.EncryptionProof.I1s = I1s
-	response.ZKProofs.EncryptionProof.I2s = I2s
-	response.ZKProofs.EncryptionProof.X_primes = X_primes
-	response.ZKProofs.EncryptionProof.Y_primes = Y_primes
-	response.ZKProofs.EncryptionProof.Z1s = z1s
-	response.ZKProofs.EncryptionProof.Z2s = z2s
-	response.ZKProofs.EncryptionProof.Z3s = z3s
-	response.ZKProofs.EncryptionProof.X_originals = X_originals
-	response.ZKProofs.EncryptionProof.Y_originals = Y_originals
+	reply.ZKProofs.EncryptionProof.Cs = cs
+	reply.ZKProofs.EncryptionProof.I1s = I1s
+	reply.ZKProofs.EncryptionProof.I2s = I2s
+	reply.ZKProofs.EncryptionProof.X_primes = X_primes
+	reply.ZKProofs.EncryptionProof.Y_primes = Y_primes
+	reply.ZKProofs.EncryptionProof.Z1s = z1s
+	reply.ZKProofs.EncryptionProof.Z2s = z2s
+	reply.ZKProofs.EncryptionProof.Z3s = z3s
+	reply.ZKProofs.EncryptionProof.X_originals = X_originals
+	reply.ZKProofs.EncryptionProof.Y_originals = Y_originals
 
 	// ****** end of zk proof of encryption for tags
 
@@ -711,7 +751,8 @@ func ClientShuffle(reportingClient *datastruct.Client, database datastruct.Datab
 	database.Entries, err = permuteDatabaseWithMatrix(permutationMatrix, database.Entries)
 	if err != nil {
 		log.Fatalf("%v", err)
-		return datastruct.ShufflePhasePerformShuffleResultRequest{}, err
+		reply.Status = false
+		return err
 	}
 
 	// check if this is the first shuffle
@@ -731,20 +772,23 @@ func ClientShuffle(reportingClient *datastruct.Client, database datastruct.Datab
 		g_r_i_k, err := elgamal.ECDH_bytes(reportingClient.G_shuffle, r_i_k)
 		if err != nil {
 			log.Fatalf("%v", err)
-			return datastruct.ShufflePhasePerformShuffleResultRequest{}, err
+			reply.Status = false
+			return err
 		}
 		// append the g_r_i_k to the entry shufflers
 		database.Entries[i].Shufflers = append(database.Entries[i].Shufflers, g_r_i_k)
 		shared_h_r_i_k, err := elgamal.ECDH_bytes(g_r_i_k, reportingClient.ShuffleKey.Bytes())
 		if err != nil {
 			log.Fatalf("%v", err)
-			return datastruct.ShufflePhasePerformShuffleResultRequest{}, err
+			reply.Status = false
+			return err
 		}
 		/// encrypt the entry again with the shared key
 		database.Entries[i].Cert_times_h_r10, err = EncryptSegments(shared_h_r_i_k, database.Entries[i].Cert_times_h_r10)
 		if err != nil {
 			log.Fatalf("%v", err)
-			return datastruct.ShufflePhasePerformShuffleResultRequest{}, err
+			reply.Status = false
+			return err
 		}
 		// fmt.Println(len(database.Entries[i].Shufflers))
 		if !first_shuffle {
@@ -754,36 +798,42 @@ func ClientShuffle(reportingClient *datastruct.Client, database datastruct.Datab
 				keys, err := LocatePublicKeyWithID(shuffler_info.ID, database.Shuffle_PubKeys)
 				if err != nil {
 					log.Fatalf("%v", err)
-					return datastruct.ShufflePhasePerformShuffleResultRequest{}, err
+					reply.Status = false
+					return err
 				}
 				r_i_prime := elgamal.Generate_Random_Dice_seed(reportingClient.Curve)
 				rk = append(rk, r_i_prime)
 				g_r_i_prime, err := elgamal.ECDH_bytes(keys.G_i, r_i_prime)
 				if err != nil {
 					log.Fatalf("%v", err)
-					return datastruct.ShufflePhasePerformShuffleResultRequest{}, err
+					reply.Status = false
+					return err
 				}
 				/// changing the shuffler entry
 				order, err := LocateShuffleOrderWithID(shuffler_info.ID, database.Shufflers_info)
 				if err != nil {
 					log.Fatalf("%v", err)
-					return datastruct.ShufflePhasePerformShuffleResultRequest{}, nil
+					reply.Status = false
+					return err
 				}
 				database.Entries[i].Shufflers[order], err = elgamal.Encrypt(database.Entries[i].Shufflers[order], g_r_i_prime)
 				if err != nil {
 					log.Fatalf("%v", err)
-					return datastruct.ShufflePhasePerformShuffleResultRequest{}, err
+					reply.Status = false
+					return err
 				}
 				/// changing the msg entry
 				h_r_i_prime, err := elgamal.ECDH_bytes(keys.H_i, r_i_prime)
 				if err != nil {
 					log.Fatalf("%v", err)
-					return datastruct.ShufflePhasePerformShuffleResultRequest{}, err
+					reply.Status = false
+					return err
 				}
 				database.Entries[i].Cert_times_h_r10, err = EncryptSegments(h_r_i_prime, database.Entries[i].Cert_times_h_r10)
 				if err != nil {
 					log.Fatalf("%v", err)
-					return datastruct.ShufflePhasePerformShuffleResultRequest{}, err
+					reply.Status = false
+					return err
 				}
 			}
 		}
@@ -802,19 +852,22 @@ func ClientShuffle(reportingClient *datastruct.Client, database datastruct.Datab
 	inverse_permutationMatrix, err := zklib.InversePermutationMatrix(permutationMatrix)
 	if err != nil {
 		log.Fatalf("%v", err)
-		return datastruct.ShufflePhasePerformShuffleResultRequest{}, err
+		reply.Status = false
+		return err
 	}
 	// fmt.Println(reportingClient.H_shuffle)
 
 	X_primes_permutated, err := permuteByteSlicesWithMatrix(permutationMatrix, X_primes)
 	if err != nil {
 		log.Fatalf("%v", err)
-		return datastruct.ShufflePhasePerformShuffleResultRequest{}, err
+		reply.Status = false
+		return err
 	}
 	Y_primes_permutated, err := permuteByteSlicesWithMatrix(permutationMatrix, Y_primes)
 	if err != nil {
 		log.Fatalf("%v", err)
-		return datastruct.ShufflePhasePerformShuffleResultRequest{}, err
+		reply.Status = false
+		return err
 	}
 
 	// reencryt tags (X_prime, Y_prime) and permute them with the matrix
@@ -828,19 +881,22 @@ func ClientShuffle(reportingClient *datastruct.Client, database datastruct.Datab
 		H_R_prime, err := elgamal.ECDH_bytes(reportingClient.H_shuffle, R_prime)
 		if err != nil {
 			log.Fatalf("%v", err)
-			return datastruct.ShufflePhasePerformShuffleResultRequest{}, err
+			reply.Status = false
+			return err
 		}
 		X_prime_encrypted_and_permutated, err := elgamal.Encrypt(X_primes_permutated[i], H_R_prime)
 		if err != nil {
 			log.Fatalf("%v", err)
-			return datastruct.ShufflePhasePerformShuffleResultRequest{}, err
+			reply.Status = false
+			return err
 		}
 		X_primes_encrypted_and_permutated = append(X_primes_encrypted_and_permutated, X_prime_encrypted_and_permutated)
 
 		Y_prime_encrypted_and_permutated, err := elgamal.Encrypt(Y_primes_permutated[i], H_R_prime)
 		if err != nil {
 			log.Fatalf("%v", err)
-			return datastruct.ShufflePhasePerformShuffleResultRequest{}, err
+			reply.Status = false
+			return err
 		}
 		Y_primes_encrypted_and_permutated = append(Y_primes_encrypted_and_permutated, Y_prime_encrypted_and_permutated)
 	}
@@ -856,7 +912,8 @@ func ClientShuffle(reportingClient *datastruct.Client, database datastruct.Datab
 	// fmt.Println(p, q, p_prime, q_prime)
 	if err != nil {
 		log.Fatalf("%v", err)
-		return datastruct.ShufflePhasePerformShuffleResultRequest{}, err
+		reply.Status = false
+		return err
 	}
 	// fmt.Println("Found the group and subgroup primes.")
 	N := new(big.Int).Mul(p, q)
@@ -1013,14 +1070,16 @@ func ClientShuffle(reportingClient *datastruct.Client, database datastruct.Datab
 			keys, err := LocatePublicKeyWithID(database.Shufflers_info[i].ID, database.Shuffle_PubKeys)
 			if err != nil {
 				log.Fatalf("%v", err)
-				return datastruct.ShufflePhasePerformShuffleResultRequest{}, err
+				reply.Status = false
+				return err
 			}
 			// add negative encryption with this public key
 			Enc_B_pos, err := elgamal.ECDH_bytes_P256_arbitrary_scalar_len(keys.H_i, Bs[i])
 			Enc_B, err := elgamal.ReturnNegative(Enc_B_pos)
 			if err != nil {
 				log.Fatalf("%v", err)
-				return datastruct.ShufflePhasePerformShuffleResultRequest{}, err
+				reply.Status = false
+				return err
 			}
 			Big_Vs[j], err = elgamal.Encrypt(Big_Vs[j], Enc_B)
 		}
@@ -1047,9 +1106,10 @@ func ClientShuffle(reportingClient *datastruct.Client, database datastruct.Datab
 
 	if err != nil {
 		log.Fatalf("%v", err)
-		return datastruct.ShufflePhasePerformShuffleResultRequest{}, err
+		reply.Status = false
+		return err
 	}
-	// generate the responses
+	// generate the replys
 	fs := make([]*big.Int, n)
 	for i := 0; i < n; i++ {
 		t_pi_j, _ := zklib.ForwardMapping(i, permutationMatrix)
@@ -1074,7 +1134,8 @@ func ClientShuffle(reportingClient *datastruct.Client, database datastruct.Datab
 			pi_l, err := zklib.ForwardMapping(l, permutationMatrix)
 			if err != nil {
 				log.Fatalf("%v", err)
-				return datastruct.ShufflePhasePerformShuffleResultRequest{}, err
+				reply.Status = false
+				return err
 			}
 			lambda_pi_l_times_R_l_k := new(big.Int).Mul(zklib.SetBigIntWithBytes(lambdas[pi_l]), R_l_k_one)
 			Z_k = new(big.Int).Add(Z_k, lambda_pi_l_times_R_l_k)
@@ -1089,27 +1150,28 @@ func ClientShuffle(reportingClient *datastruct.Client, database datastruct.Datab
 		pi_l, err := zklib.ForwardMapping(i, permutationMatrix)
 		if err != nil {
 			log.Fatalf("%v", err)
-			return datastruct.ShufflePhasePerformShuffleResultRequest{}, err
+			reply.Status = false
+			return err
 		}
 		lambda_pi_l_times_R_prime := new(big.Int).Mul(zklib.SetBigIntWithBytes(lambdas[pi_l]), zklib.SetBigIntWithBytes(R_primes[i]))
 		Z_prime = new(big.Int).Add(Z_prime, lambda_pi_l_times_R_prime)
 	}
 
-	response.ZKProofs.ShuffleProof.EntriesBeforeShuffle = original_entries
-	response.ZKProofs.ShuffleProof.EntriesAfterShuffle = shuffled_entries
-	response.ZKProofs.ShuffleProof.X_primes_encrypted_and_permutated_tagX = X_primes_encrypted_and_permutated
-	response.ZKProofs.ShuffleProof.Y_primes_encrypted_and_permutated_tagY = Y_primes_encrypted_and_permutated
-	response.ZKProofs.ShuffleProof.Commitments = commitments
-	response.ZKProofs.ShuffleProof.Big_Vs = Big_Vs
-	response.ZKProofs.ShuffleProof.V_prime_X = V_prime_X
-	response.ZKProofs.ShuffleProof.V_prime_Y = V_prime_Y
-	response.ZKProofs.ShuffleProof.ChallengesLambda = lambdas
-	response.ZKProofs.ShuffleProof.Fs = fs
-	response.ZKProofs.ShuffleProof.SmallZ = small_z
-	response.ZKProofs.ShuffleProof.Z_ks = Z_ks
-	response.ZKProofs.ShuffleProof.Z_prime = Z_prime
-	response.ZKProofs.ShuffleProof.RSA_subgroup_generators = gs
-	response.ZKProofs.ShuffleProof.Updated_Shufflers_info = database.Shufflers_info
+	reply.ZKProofs.ShuffleProof.EntriesBeforeShuffle = original_entries
+	reply.ZKProofs.ShuffleProof.EntriesAfterShuffle = shuffled_entries
+	reply.ZKProofs.ShuffleProof.X_primes_encrypted_and_permutated_tagX = X_primes_encrypted_and_permutated
+	reply.ZKProofs.ShuffleProof.Y_primes_encrypted_and_permutated_tagY = Y_primes_encrypted_and_permutated
+	reply.ZKProofs.ShuffleProof.Commitments = commitments
+	reply.ZKProofs.ShuffleProof.Big_Vs = Big_Vs
+	reply.ZKProofs.ShuffleProof.V_prime_X = V_prime_X
+	reply.ZKProofs.ShuffleProof.V_prime_Y = V_prime_Y
+	reply.ZKProofs.ShuffleProof.ChallengesLambda = lambdas
+	reply.ZKProofs.ShuffleProof.Fs = fs
+	reply.ZKProofs.ShuffleProof.SmallZ = small_z
+	reply.ZKProofs.ShuffleProof.Z_ks = Z_ks
+	reply.ZKProofs.ShuffleProof.Z_prime = Z_prime
+	reply.ZKProofs.ShuffleProof.RSA_subgroup_generators = gs
+	reply.ZKProofs.ShuffleProof.Updated_Shufflers_info = database.Shufflers_info
 
 	// *** zero knowledge Proof of Knowledge decryption
 	// submit the rG and commitment of decryption to the auditor
@@ -1123,27 +1185,32 @@ func ClientShuffle(reportingClient *datastruct.Client, database datastruct.Datab
 		r_prime_g, err := elgamal.ECDH_bytes(reportingClient.G_shuffle, R_primes[i])
 		if err != nil {
 			log.Fatalf("%v", err)
-			return datastruct.ShufflePhasePerformShuffleResultRequest{}, err
+			reply.Status = false
+			return err
 		}
 		beta, err := elgamal.ECDH_bytes(reportingClient.G_shuffle, betas[i])
 		if err != nil {
 			log.Fatalf("%v", err)
-			return datastruct.ShufflePhasePerformShuffleResultRequest{}, err
+			reply.Status = false
+			return err
 		}
 		gamma, err := elgamal.ECDH_bytes(reportingClient.G_shuffle, gammas[i])
 		if err != nil {
 			log.Fatalf("%v", err)
-			return datastruct.ShufflePhasePerformShuffleResultRequest{}, err
+			reply.Status = false
+			return err
 		}
 		x, err := elgamal.Encrypt(r_prime_g, beta)
 		if err != nil {
 			log.Fatalf("%v", err)
-			return datastruct.ShufflePhasePerformShuffleResultRequest{}, err
+			reply.Status = false
+			return err
 		}
 		y, err := elgamal.Encrypt(r_prime_g, gamma)
 		if err != nil {
 			log.Fatalf("%v", err)
-			return datastruct.ShufflePhasePerformShuffleResultRequest{}, err
+			reply.Status = false
+			return err
 		}
 		rG_x = append(rG_x, x)
 		rG_y = append(rG_y, y)
@@ -1169,21 +1236,39 @@ func ClientShuffle(reportingClient *datastruct.Client, database datastruct.Datab
 	}
 
 	// just record it
-	response.ZKProofs.DecryptionProof.Challenges = challenges
-	response.ZKProofs.DecryptionProof.Ss_X = S_x
-	response.ZKProofs.DecryptionProof.Ss_Y = S_y
-	response.ZKProofs.DecryptionProof.RG_X = rG_x
-	response.ZKProofs.DecryptionProof.RG_Y = rG_y
+	reply.ZKProofs.DecryptionProof.Challenges = challenges
+	reply.ZKProofs.DecryptionProof.Ss_X = S_x
+	reply.ZKProofs.DecryptionProof.Ss_Y = S_y
+	reply.ZKProofs.DecryptionProof.RG_X = rG_x
+	reply.ZKProofs.DecryptionProof.RG_Y = rG_y
 
-	response.Database = database
+	reply.Database = database
 	//**** end of the zero knowledge Proof of Knowledge decryption Done!
+	reply.Status = true
 
-	return response, nil
+	total_time := time.Since(start)
+	reportingClient.ShuffleTime = total_time.Seconds()
+
+	shuffle_up, err := json.Marshal(reply)
+	if err != nil {
+		log.Fatalf("Error serializing to JSON: %v", err)
+	}
+
+	reportingClient.ShuffleUpload = len(shuffle_up)
+
+	shuffle_down, err := json.Marshal(req)
+	if err != nil {
+		log.Fatalf("Error serializing to JSON: %v", err)
+	}
+
+	reportingClient.ShuffleDownload = len(shuffle_down)
+
+	return nil
 }
 
-func ClientReveal(reportingClient *datastruct.Client, database datastruct.Database, zkdatabase []*datastruct.ZKRecords) (datastruct.RevealPhaseReportRevealRequest, error) {
+func ClientReveal(reportingClient *Client, database datastruct.Database, zkdatabase []*datastruct.ZKRecords) (datastruct.RevealPhaseReportRevealRequest, error) {
 
-	// verify the zk information before doing the reveal
+	// check the zk proof first
 
 	/// untrim the zkrecords to fit in the function
 	for i := 0; i < len(zkdatabase); i++ {
@@ -1259,6 +1344,63 @@ func ClientReveal(reportingClient *datastruct.Client, database datastruct.Databa
 	}
 	req.RevealRecords = *revealRecords
 	return req, nil
+}
+
+// //client reports to the auditor with decryption
+func ClientReportDecryptedSecret(client *Client, missingClientID int, database datastruct.Database) (*datastruct.SecreteShareDecrypt, error) {
+	/// find missing client's intended secrete piece
+	secretes := database.SecreteShareMap[missingClientID]
+	var missingClientPiece *datastruct.SecreteSharePoint
+	for i := 0; i < len(secretes); i++ {
+		if secretes[i].Intended_Client == client.ID {
+			missingClientPiece = secretes[i]
+		}
+	}
+	if missingClientPiece == nil {
+		// this client was not shared with a secrete
+		return nil, nil
+	}
+	/// find the missing client's pub key
+	missingClientPubKey, err := LocatePublicKeyWithID(missingClientID, database.Shuffle_PubKeys)
+	if err != nil {
+		log.Fatalf("client pubkey not found %v", err)
+		return nil, err
+	}
+	/// find the missing client's shuffling order
+	missingClientShuffleOrder, err := LocateShuffleOrderWithID(missingClientID, database.Shufflers_info)
+	if err != nil {
+		log.Fatalf("client Shuffle order not found %v", err)
+		return nil, err
+	}
+	// compute d_j_i with for each database entry and return to auditor
+	shared_secrete, err := elgamal.ECDH_bytes(missingClientPubKey.DH_Pub_H, client.DH_Pub_private)
+	if err != nil {
+		log.Fatalf("%v", err)
+		return nil, err
+	}
+	symmetric_key := aes.DeriveKeyFromSHA256(shared_secrete, 16)
+	// fmt.Println(symmetric_key)
+	decrypted_y, err := aes.Decrypt(missingClientPiece.Encrypted_y, symmetric_key)
+	if err != nil {
+		log.Fatalf("%v", err)
+		return nil, err
+	}
+
+	res_d_j_i := [][]byte{}
+	for i := 0; i < len(database.Entries); i++ {
+		/// compute while treating the secrete piece as a piece
+		d_ji, err := elgamal.ECDH_bytes(database.Entries[i].Shufflers[missingClientShuffleOrder], decrypted_y)
+		if err != nil {
+			log.Fatalf("secrete piece compute issue %v", err)
+			return nil, err
+		}
+		res_d_j_i = append(res_d_j_i, d_ji)
+	}
+
+	return &datastruct.SecreteShareDecrypt{
+		Tag:           missingClientPiece.Tag,
+		DecryptPieces: res_d_j_i,
+	}, nil
 }
 
 func CheckZKProofForOne(zkproof *datastruct.ZKRecords, database datastruct.Database) bool {
@@ -1602,61 +1744,4 @@ func CheckZKProofForOne(zkproof *datastruct.ZKRecords, database datastruct.Datab
 	}
 
 	return true
-}
-
-// //client reports to the auditor with decryption
-func ClientReportDecryptedSecret(client *datastruct.Client, missingClientID int, database datastruct.Database) (datastruct.SecreteShareDecrypt, error) {
-	/// find missing client's intended secrete piece
-	secretes := database.SecreteShareMap[missingClientID]
-	var missingClientPiece *datastruct.SecreteSharePoint
-	for i := 0; i < len(secretes); i++ {
-		if secretes[i].Intended_Client == client.ID {
-			missingClientPiece = secretes[i]
-		}
-	}
-	if missingClientPiece == nil {
-		// this client was not shared with a secrete
-		return datastruct.SecreteShareDecrypt{}, nil
-	}
-	/// find the missing client's pub key
-	missingClientPubKey, err := LocatePublicKeyWithID(missingClientID, database.Shuffle_PubKeys)
-	if err != nil {
-		log.Fatalf("client pubkey not found %v", err)
-		return datastruct.SecreteShareDecrypt{}, err
-	}
-	/// find the missing client's shuffling order
-	missingClientShuffleOrder, err := LocateShuffleOrderWithID(missingClientID, database.Shufflers_info)
-	if err != nil {
-		log.Fatalf("client Shuffle order not found %v", err)
-		return datastruct.SecreteShareDecrypt{}, err
-	}
-	// compute d_j_i with for each database entry and return to auditor
-	shared_secrete, err := elgamal.ECDH_bytes(missingClientPubKey.DH_Pub_H, client.DH_Pub_private)
-	if err != nil {
-		log.Fatalf("%v", err)
-		return datastruct.SecreteShareDecrypt{}, err
-	}
-	symmetric_key := aes.DeriveKeyFromSHA256(shared_secrete, 16)
-	// fmt.Println(symmetric_key)
-	decrypted_y, err := aes.Decrypt(missingClientPiece.Encrypted_y, symmetric_key)
-	if err != nil {
-		log.Fatalf("%v", err)
-		return datastruct.SecreteShareDecrypt{}, err
-	}
-
-	res_d_j_i := [][]byte{}
-	for i := 0; i < len(database.Entries); i++ {
-		/// compute while treating the secrete piece as a piece
-		d_ji, err := elgamal.ECDH_bytes(database.Entries[i].Shufflers[missingClientShuffleOrder], decrypted_y)
-		if err != nil {
-			log.Fatalf("secrete piece compute issue %v", err)
-			return datastruct.SecreteShareDecrypt{}, err
-		}
-		res_d_j_i = append(res_d_j_i, d_ji)
-	}
-
-	return datastruct.SecreteShareDecrypt{
-		Tag:           missingClientPiece.Tag,
-		DecryptPieces: res_d_j_i,
-	}, nil
 }
