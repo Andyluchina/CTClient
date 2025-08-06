@@ -15,6 +15,7 @@ const web_cert_len = 2048
 const apply_compressions = true
 
 const ORDER_OF_P256 = "1111111111111111111111111111111100000000000000000000000000000000111111111111111111111111111111111111111111111111111111111111111110111100111001101111101010101101101001110001011110011110100001001111001110111001110010101100001011111100011000110010010101010001"
+const cert_len = 32
 
 func ORDER_OF_P256_big() *big.Int {
 	order, _ := new(big.Int).SetString(ORDER_OF_P256, 2)
@@ -128,7 +129,7 @@ func Generate_certificate() []byte {
 	/// generate a random certificate, splt it into 9 pieces, first byte is padding, last 2 bytes are sha256 hashes
 	/// here we are just generating the certificate
 	// 2048 bits is 256 bytes, generate one certificate randomly
-	slice := make([]byte, 256)
+	slice := make([]byte, 32)
 
 	// Read fills slice with random data
 	_, err := rand.Read(slice)

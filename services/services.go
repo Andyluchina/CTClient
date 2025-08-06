@@ -138,6 +138,17 @@ func CreateInitialEntry(client *Client) (*datastruct.ReportingEntry, error) {
 }
 
 func segmentBitsWithPadding_MapOnCurve(data []byte) ([][]byte, error) {
+	if len(data) == 32 {
+		// If the data is already 32 bytes, just map it to the curve
+		segments := make([][]byte, 1)
+		mapped_point, err := mapPointOnCurve(data)
+		if err != nil {
+			return nil, err
+		}
+		segments[0] = mapped_point
+		return segments, nil
+	}
+
 	if len(data) != 256 {
 		return nil, errors.New("data slice must be 256 bytes long")
 	}
