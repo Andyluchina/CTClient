@@ -770,6 +770,16 @@ func (reportingClient *Client) ClientShuffle(req *datastruct.ShufflePhaseAuditor
 	// 	first_shuffle = false
 	// }
 
+	client_count := len(database.Entries)
+	database.Shufflers_info = []*datastruct.ShuffleRecords{}
+	for i := 0; i < client_count; i++ {
+		// should just include everyone
+		client_info := &datastruct.ShuffleRecords{
+			ID: i,
+		}
+		database.Shufflers_info = append(database.Shufflers_info, client_info)
+	}
+
 	//  **** perform actual shuffling
 	R_l_k := make([][][]byte, len(database.Entries))
 	// randomize the entries/ encrypt the entries
@@ -850,15 +860,15 @@ func (reportingClient *Client) ClientShuffle(req *datastruct.ShufflePhaseAuditor
 	}
 
 	/// append the client info
-	client_count := len(database.Entries)
-	database.Shufflers_info = []*datastruct.ShuffleRecords{}
-	for i := 0; i < client_count; i++ {
-		// should just include everyone
-		client_info := &datastruct.ShuffleRecords{
-			ID: i,
-		}
-		database.Shufflers_info = append(database.Shufflers_info, client_info)
-	}
+	// client_count := len(database.Entries)
+	// database.Shufflers_info = []*datastruct.ShuffleRecords{}
+	// for i := 0; i < client_count; i++ {
+	// 	// should just include everyone
+	// 	client_info := &datastruct.ShuffleRecords{
+	// 		ID: i,
+	// 	}
+	// 	database.Shufflers_info = append(database.Shufflers_info, client_info)
+	// }
 
 	// database.Shufflers_info = append(database.Shufflers_info, client_info)
 
