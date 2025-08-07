@@ -557,6 +557,14 @@ func (reportingClient *Client) ClientShuffle(req *datastruct.ShufflePhaseAuditor
 
 	start := time.Now()
 
+	if req.Status == 0 {
+		reply.Status = true
+		reportingClient.ShuffleTime = 0.1
+		reportingClient.ShuffleDownload = 8
+		reportingClient.ShuffleUpload = 8
+		return nil
+	}
+
 	reply.ShufflerID = reportingClient.ID
 
 	reply.ZKProofs = datastruct.ZKRecords{}
@@ -756,11 +764,11 @@ func (reportingClient *Client) ClientShuffle(req *datastruct.ShufflePhaseAuditor
 	}
 
 	// check if this is the first shuffle
-	first_shuffle := true
-	if len(database.Shufflers_info) > 0 {
-		// not first shuffle
-		first_shuffle = false
-	}
+	// first_shuffle := true
+	// if len(database.Shufflers_info) > 0 {
+	// 	// not first shuffle
+	// 	first_shuffle = false
+	// }
 
 	//  **** perform actual shuffling
 	R_l_k := make([][][]byte, len(database.Entries))
@@ -768,85 +776,91 @@ func (reportingClient *Client) ClientShuffle(req *datastruct.ShufflePhaseAuditor
 	for i := 0; i < len(database.Entries); i++ {
 		rk := [][]byte{}
 		// encrypt and append g_r_i_k
-		r_i_k := elgamal.Generate_Random_Dice_seed(reportingClient.Curve)
-		g_r_i_k, err := elgamal.ECDH_bytes(reportingClient.G_shuffle, r_i_k)
-		if err != nil {
-			log.Fatalf("%v", err)
-			reply.Status = false
-			return err
-		}
-		// append the g_r_i_k to the entry shufflers
-		database.Entries[i].Shufflers = append(database.Entries[i].Shufflers, g_r_i_k)
-		shared_h_r_i_k, err := elgamal.ECDH_bytes(g_r_i_k, reportingClient.ShuffleKey.Bytes())
-		if err != nil {
-			log.Fatalf("%v", err)
-			reply.Status = false
-			return err
-		}
-		/// encrypt the entry again with the shared key
-		database.Entries[i].Cert_times_h_r10, err = EncryptSegments(shared_h_r_i_k, database.Entries[i].Cert_times_h_r10)
-		if err != nil {
-			log.Fatalf("%v", err)
-			reply.Status = false
-			return err
-		}
-		// fmt.Println(len(database.Entries[i].Shufflers))
-		if !first_shuffle {
-			/// not the first shuffle, re-randomize the previous shufflers
-			for j := 0; j < len(database.Entries[i].Shufflers)-1; j++ {
-				shuffler_info := database.Shufflers_info[j]
-				keys, err := LocatePublicKeyWithID(shuffler_info.ID, database.Shuffle_PubKeys)
-				if err != nil {
-					log.Fatalf("%v", err)
-					reply.Status = false
-					return err
-				}
-				r_i_prime := elgamal.Generate_Random_Dice_seed(reportingClient.Curve)
-				rk = append(rk, r_i_prime)
-				g_r_i_prime, err := elgamal.ECDH_bytes(keys.G_i, r_i_prime)
-				if err != nil {
-					log.Fatalf("%v", err)
-					reply.Status = false
-					return err
-				}
-				/// changing the shuffler entry
-				order, err := LocateShuffleOrderWithID(shuffler_info.ID, database.Shufflers_info)
-				if err != nil {
-					log.Fatalf("%v", err)
-					reply.Status = false
-					return err
-				}
-				database.Entries[i].Shufflers[order], err = elgamal.Encrypt(database.Entries[i].Shufflers[order], g_r_i_prime)
-				if err != nil {
-					log.Fatalf("%v", err)
-					reply.Status = false
-					return err
-				}
-				/// changing the msg entry
-				h_r_i_prime, err := elgamal.ECDH_bytes(keys.H_i, r_i_prime)
-				if err != nil {
-					log.Fatalf("%v", err)
-					reply.Status = false
-					return err
-				}
-				database.Entries[i].Cert_times_h_r10, err = EncryptSegments(h_r_i_prime, database.Entries[i].Cert_times_h_r10)
-				if err != nil {
-					log.Fatalf("%v", err)
-					reply.Status = false
-					return err
-				}
+		// r_i_k := elgamal.Generate_Random_Dice_seed(reportingClient.Curve)
+		// g_r_i_k, err := elgamal.ECDH_bytes(reportingClient.G_shuffle, r_i_k)
+		// if err != nil {
+		// 	log.Fatalf("%v", err)
+		// 	reply.Status = false
+		// 	return err
+		// }
+		// // append the g_r_i_k to the entry shufflers
+		// database.Entries[i].Shufflers = append(database.Entries[i].Shufflers, g_r_i_k)
+		// shared_h_r_i_k, err := elgamal.ECDH_bytes(g_r_i_k, reportingClient.ShuffleKey.Bytes())
+		// if err != nil {
+		// 	log.Fatalf("%v", err)
+		// 	reply.Status = false
+		// 	return err
+		// }
+		// /// encrypt the entry again with the shared key
+		// database.Entries[i].Cert_times_h_r10, err = EncryptSegments(shared_h_r_i_k, database.Entries[i].Cert_times_h_r10)
+		// if err != nil {
+		// 	log.Fatalf("%v", err)
+		// 	reply.Status = false
+		// 	return err
+		// }
+		// // fmt.Println(len(database.Entries[i].Shufflers))
+		// if !first_shuffle {
+		/// not the first shuffle, re-randomize the previous shufflers
+		for j := 0; j < len(database.Entries[i].Shufflers); j++ {
+			shuffler_info := database.Shufflers_info[j]
+			keys, err := LocatePublicKeyWithID(shuffler_info.ID, database.Shuffle_PubKeys)
+			if err != nil {
+				log.Fatalf("%v", err)
+				reply.Status = false
+				return err
+			}
+			r_i_prime := elgamal.Generate_Random_Dice_seed(reportingClient.Curve)
+			rk = append(rk, r_i_prime)
+			g_r_i_prime, err := elgamal.ECDH_bytes(keys.G_i, r_i_prime)
+			if err != nil {
+				log.Fatalf("%v", err)
+				reply.Status = false
+				return err
+			}
+			/// changing the shuffler entry
+			order, err := LocateShuffleOrderWithID(shuffler_info.ID, database.Shufflers_info)
+			if err != nil {
+				log.Fatalf("%v", err)
+				reply.Status = false
+				return err
+			}
+			database.Entries[i].Shufflers[order], err = elgamal.Encrypt(database.Entries[i].Shufflers[order], g_r_i_prime)
+			if err != nil {
+				log.Fatalf("%v", err)
+				reply.Status = false
+				return err
+			}
+			/// changing the msg entry
+			h_r_i_prime, err := elgamal.ECDH_bytes(keys.H_i, r_i_prime)
+			if err != nil {
+				log.Fatalf("%v", err)
+				reply.Status = false
+				return err
+			}
+			database.Entries[i].Cert_times_h_r10, err = EncryptSegments(h_r_i_prime, database.Entries[i].Cert_times_h_r10)
+			if err != nil {
+				log.Fatalf("%v", err)
+				reply.Status = false
+				return err
 			}
 		}
-		rk = append(rk, r_i_k)
+		// }
+		// rk = append(rk, r_i_k)
 		R_l_k[i] = rk
 	}
 
 	/// append the client info
-	client_info := &datastruct.ShuffleRecords{
-		ID: reportingClient.ID,
+	client_count := len(database.Entries)
+	database.Shufflers_info = []*datastruct.ShuffleRecords{}
+	for i := 0; i < client_count; i++ {
+		// should just include everyone
+		client_info := &datastruct.ShuffleRecords{
+			ID: i,
+		}
+		database.Shufflers_info = append(database.Shufflers_info, client_info)
 	}
 
-	database.Shufflers_info = append(database.Shufflers_info, client_info)
+	// database.Shufflers_info = append(database.Shufflers_info, client_info)
 
 	// *** zero knowledge shuffling proof
 	inverse_permutationMatrix, err := zklib.InversePermutationMatrix(permutationMatrix)

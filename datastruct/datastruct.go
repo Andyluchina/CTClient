@@ -173,6 +173,7 @@ type InitalReportingSecreteSharingReply struct {
 // }
 
 type ShufflePhaseAuditorRequest struct {
+	Status   int
 	Database Database
 }
 
