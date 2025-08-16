@@ -1357,6 +1357,15 @@ func ClientReportDecryptedSecret(client *Client, missingClientID int, database d
 		return nil, err
 	}
 	/// find the missing client's shuffling order
+	database.Shufflers_info = []*datastruct.ShuffleRecords{}
+	client_count := len(database.Entries)
+	for i := 0; i < client_count; i++ {
+		// should just include everyone
+		client_info := &datastruct.ShuffleRecords{
+			ID: i,
+		}
+		database.Shufflers_info = append(database.Shufflers_info, client_info)
+	}
 	missingClientShuffleOrder, err := LocateShuffleOrderWithID(missingClientID, database.Shufflers_info)
 	if err != nil {
 		log.Fatalf("client Shuffle order not found %v", err)
