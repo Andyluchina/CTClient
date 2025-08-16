@@ -5,6 +5,7 @@ import (
 	"CTLogchecker/ClientApp/services"
 	"crypto/ecdh"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -80,14 +81,23 @@ func main() {
 
 	register_successful := false
 
+	dial := func() *rpc.Client {
+		c, err := rpc.Dial("tcp", server_address)
+		if err != nil {
+			log.Printf("dial to %s failed: %v", server_address, err)
+			return nil
+		}
+		return c
+	}
+
 	for !register_successful {
-		// err = network_interface.Call("CTLogCheckerAuditor.RegisterClient", req, &reply)
-		// if err != nil {
-		// 	// log.Fatal("arith error:", err)
-		// }
-		// if reply.Status {
-		// 	register_successful = true
-		// }
+		// ensure we have a live client
+		if network_interface == nil {
+			network_interface = dial()
+			if network_interface == nil { // couldn't connect; retry immediately
+				continue
+			}
+		}
 
 		timeout := 30 * time.Second
 
@@ -96,21 +106,30 @@ func main() {
 
 		select {
 		case res := <-call.Done:
-			if res.Error != nil {
-				log.Printf("Registering failed: %v", res.Error)
-			} else {
-				log.Printf("Registering OK")
+			if res.Error == nil {
 				if reply.Status {
+					log.Printf("Registering OK")
 					register_successful = true
+				} else {
+					log.Printf("Registering responded but not accepted (Status=false); retrying")
+					// immediate retry with same connection
 				}
+			} else if errors.Is(res.Error, rpc.ErrShutdown) {
+				log.Printf("Registering failed: connection is shut down; redialing %s", server_address)
+				_ = network_interface.Close()
+				network_interface = nil // force redial next iteration
+			} else {
+				log.Printf("Registering failed: %v (retrying)", res.Error)
+				// immediate retry with same connection
 			}
+
 		case <-time.After(timeout):
-			log.Printf("Registering timed out after %s", timeout)
-			// Optional: hard-cancel by closing the client and rebuilding the connection:
-			// _ = client.Close()
-			// (If you keep the client open, this in-flight call may still complete later.)
+			log.Printf("Registering timed out after %s; redialing %s", timeout, server_address)
+			_ = network_interface.Close() // aborts in-flight call (it will finish with ErrShutdown internally)
+			network_interface = nil       // force redial next iteration
 		}
 	}
+
 	// err = network_interface.Call("CTLogCheckerAuditor.RegisterClient", req, &reply)
 	// if err != nil {
 	// 	log.Fatal("arith error:", err)
