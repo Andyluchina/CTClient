@@ -559,7 +559,7 @@ func (reportingClient *Client) ClientShuffle(req *datastruct.ShufflePhaseAuditor
 
 	if req.Status == 0 {
 		reply.Status = true
-		reportingClient.ShuffleTime = 0.1
+		reportingClient.ShuffleTime = 0.01
 		reportingClient.ShuffleDownload = 8
 		reportingClient.ShuffleUpload = 8
 		return nil

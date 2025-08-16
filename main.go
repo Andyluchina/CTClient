@@ -81,14 +81,35 @@ func main() {
 	register_successful := false
 
 	for !register_successful {
-		err = network_interface.Call("CTLogCheckerAuditor.RegisterClient", req, &reply)
-		if err != nil {
-			// log.Fatal("arith error:", err)
-		}
-		if reply.Status {
-			register_successful = true
-		}
+		// err = network_interface.Call("CTLogCheckerAuditor.RegisterClient", req, &reply)
+		// if err != nil {
+		// 	// log.Fatal("arith error:", err)
+		// }
+		// if reply.Status {
+		// 	register_successful = true
+		// }
 
+		timeout := 30 * time.Second
+
+		done := make(chan *rpc.Call, 1)
+		call := network_interface.Go("CTLogCheckerAuditor.RegisterClient", req, &reply, done)
+
+		select {
+		case res := <-call.Done:
+			if res.Error != nil {
+				log.Printf("Registering failed: %v", res.Error)
+			} else {
+				log.Printf("Registering OK")
+				if reply.Status {
+					register_successful = true
+				}
+			}
+		case <-time.After(timeout):
+			log.Printf("Registering timed out after %s", timeout)
+			// Optional: hard-cancel by closing the client and rebuilding the connection:
+			// _ = client.Close()
+			// (If you keep the client open, this in-flight call may still complete later.)
+		}
 	}
 	// err = network_interface.Call("CTLogCheckerAuditor.RegisterClient", req, &reply)
 	// if err != nil {
@@ -193,11 +214,13 @@ func main() {
 	rpc.Register(client)
 
 	shuffle_completed := false
-
+	fmt.Println("Starting Shuffle Phase for client ", client.ID)
 	for !shuffle_completed {
 		AcceptReq()
 		if client.ShuffleTime > 0 {
 			shuffle_completed = true
+		} else {
+			fmt.Println("accepted a request to shuffle but somehow failed ", client.ID)
 		}
 	}
 	// accquire_lock := false
