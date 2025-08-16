@@ -40,6 +40,9 @@ func main() {
 	server_address := args[0]
 	collector_address := args[2]
 	shuffler_under_k_keys, err := strconv.Atoi(args[3])
+	if err != nil {
+		panic(err)
+	}
 	curve := ecdh.P256()
 	network_interface, err := rpc.DialHTTP("tcp", server_address)
 	if err != nil {
