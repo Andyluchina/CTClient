@@ -23,25 +23,26 @@ import (
 )
 
 type Client struct {
-	ID              int
-	ReportingKey    *ecdh.PrivateKey
-	ShuffleKey      *ecdh.PrivateKey
-	ReportingValue  []byte
-	Curve           ecdh.Curve
-	G_report        []byte /// init point needs to be different for every client
-	H_report        []byte
-	G_shuffle       []byte /// init point needs to be different for every client
-	H_shuffle       []byte
-	DH_Pub_H        []byte /// pub key for secrete sharing
-	DH_Pub_private  []byte
-	InitialG_ri0    []byte
-	TotalClients    uint32
-	RevealThreshold uint32
-	Shamir_curve    *curves.Curve
-	MyIP            string
-	ShuffleTime     float64
-	ShuffleUpload   int
-	ShuffleDownload int
+	ID               int
+	ReportingKey     *ecdh.PrivateKey
+	ShuffleKey       *ecdh.PrivateKey
+	ReportingValue   []byte
+	Curve            ecdh.Curve
+	G_report         []byte /// init point needs to be different for every client
+	H_report         []byte
+	G_shuffle        []byte /// init point needs to be different for every client
+	H_shuffle        []byte
+	DH_Pub_H         []byte /// pub key for secrete sharing
+	DH_Pub_private   []byte
+	InitialG_ri0     []byte
+	TotalClients     uint32
+	RevealThreshold  uint32
+	Shamir_curve     *curves.Curve
+	MyIP             string
+	ShuffleTime      float64
+	ShuffleUpload    int
+	ShuffleDownload  int
+	ShuffleUnderKeys int
 }
 
 // NewAuditor creates a new Auditor instance
@@ -778,33 +779,7 @@ func (reportingClient *Client) ClientShuffle(req *datastruct.ShufflePhaseAuditor
 	// randomize the entries/ encrypt the entries
 	for i := 0; i < len(database.Entries); i++ {
 		rk := [][]byte{}
-		// encrypt and append g_r_i_k
-		// r_i_k := elgamal.Generate_Random_Dice_seed(reportingClient.Curve)
-		// g_r_i_k, err := elgamal.ECDH_bytes(reportingClient.G_shuffle, r_i_k)
-		// if err != nil {
-		// 	log.Fatalf("%v", err)
-		// 	reply.Status = false
-		// 	return err
-		// }
-		// // append the g_r_i_k to the entry shufflers
-		// database.Entries[i].Shufflers = append(database.Entries[i].Shufflers, g_r_i_k)
-		// shared_h_r_i_k, err := elgamal.ECDH_bytes(g_r_i_k, reportingClient.ShuffleKey.Bytes())
-		// if err != nil {
-		// 	log.Fatalf("%v", err)
-		// 	reply.Status = false
-		// 	return err
-		// }
-		// /// encrypt the entry again with the shared key
-		// database.Entries[i].Cert_times_h_r10, err = EncryptSegments(shared_h_r_i_k, database.Entries[i].Cert_times_h_r10)
-		// if err != nil {
-		// 	log.Fatalf("%v", err)
-		// 	reply.Status = false
-		// 	return err
-		// }
-		// // fmt.Println(len(database.Entries[i].Shufflers))
-		// if !first_shuffle {
-		/// not the first shuffle, re-randomize the previous shufflers
-		for j := 0; j < len(database.Entries[i].Shufflers); j++ {
+		for j := 0; j < reportingClient.ShuffleUnderKeys; j++ {
 			shuffler_info := database.Shufflers_info[j]
 			keys, err := LocatePublicKeyWithID(shuffler_info.ID, database.Shuffle_PubKeys)
 			if err != nil {
@@ -847,7 +822,7 @@ func (reportingClient *Client) ClientShuffle(req *datastruct.ShufflePhaseAuditor
 				return err
 			}
 		}
-		// }
+		//
 		// rk = append(rk, r_i_k)
 		R_l_k[i] = rk
 	}
