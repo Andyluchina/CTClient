@@ -763,9 +763,9 @@ func (reportingClient *Client) ClientShuffle(req *datastruct.ShufflePhaseAuditor
 		return err
 	}
 
-	// client_count := len(database.Entries)
+	client_count := len(database.Entries)
 	database.Shufflers_info = []*datastruct.ShuffleRecords{}
-	for i := 0; i < reportingClient.ShuffleUnderKeys; i++ {
+	for i := 0; i < client_count; i++ {
 		// should just include everyone
 		client_info := &datastruct.ShuffleRecords{
 			ID: i,
@@ -1036,14 +1036,14 @@ func (reportingClient *Client) ClientShuffle(req *datastruct.ShufflePhaseAuditor
 	// Bs are R_R in the paper
 	// calculate all public keys
 	Bs := [][]byte{}
-	for i := 0; i < len(database.Shufflers_info); i++ {
+	for i := 0; i < reportingClient.ShuffleUnderKeys; i++ {
 		B, err := zklib.GenerateSecureRandomBits(l_s_plus_l_r + l_t)
 		if err != nil {
 			panic(err)
 		}
 		Bs = append(Bs, B)
 	}
-	for i := 0; i < len(database.Shufflers_info); i++ {
+	for i := 0; i < reportingClient.ShuffleUnderKeys; i++ {
 		for j := 0; j < len(database.Entries[0].Cert_times_h_r10); j++ {
 			keys, err := LocatePublicKeyWithID(database.Shufflers_info[i].ID, database.Shuffle_PubKeys)
 			if err != nil {
@@ -1105,7 +1105,7 @@ func (reportingClient *Client) ClientShuffle(req *datastruct.ShufflePhaseAuditor
 	// //(len(R_l_k))
 	// //(len(R_l_k[0]))
 	// //(len(Bs))
-	for k := 0; k < len(database.Shufflers_info); k++ {
+	for k := 0; k < reportingClient.ShuffleUnderKeys; k++ {
 		Z_k := zklib.SetBigIntWithBytes(Bs[k])
 		for l := 0; l < n; l++ {
 			R_l_k_one := zklib.SetBigIntWithBytes(R_l_k[l][k])
