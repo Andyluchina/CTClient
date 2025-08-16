@@ -763,9 +763,9 @@ func (reportingClient *Client) ClientShuffle(req *datastruct.ShufflePhaseAuditor
 		return err
 	}
 
-	client_count := len(database.Entries)
+	// client_count := len(database.Entries)
 	database.Shufflers_info = []*datastruct.ShuffleRecords{}
-	for i := 0; i < client_count; i++ {
+	for i := 0; i < reportingClient.ShuffleUnderKeys; i++ {
 		// should just include everyone
 		client_info := &datastruct.ShuffleRecords{
 			ID: i,
