@@ -93,7 +93,7 @@ func CreateInitialEntry(client *Client) (*datastruct.ReportingEntry, error) {
 	// segment the certficate with chaining
 	segments, err := segmentBitsWithPadding_MapOnCurve(client.ReportingValue)
 	if err != nil {
-		fmt.Println("Error segmenting bits:", err)
+		//("Error segmenting bits:", err)
 		return nil, err
 	}
 
@@ -172,8 +172,8 @@ func segmentBitsWithPadding_MapOnCurve(data []byte) ([][]byte, error) {
 		// try to map to a point on the curve
 		mapped_point, e := mapPointOnCurve(segment)
 		if e != nil {
-			fmt.Println("Error mapping point on curve:", e)
-			// fmt.Println(t)
+			//("Error mapping point on curve:", e)
+			// //(t)
 			panic(e)
 		}
 		segments[i] = mapped_point
@@ -274,8 +274,8 @@ func SecreteShare(reportingClient *Client, Shuffle_PubKeys []*datastruct.Shuffle
 		log.Fatalf("%v", err)
 		return nil, err
 	}
-	// fmt.Println(len(reportingClient.ShuffleKey.Bytes()))
-	// fmt.Println(len(reportingClient.H_report))
+	// //(len(reportingClient.ShuffleKey.Bytes()))
+	// //(len(reportingClient.H_report))
 	// database.Shuffle_PubKeys
 	encrypt_secrete_array := []*datastruct.SecreteSharePoint{}
 	/// generate a list of client ids to randomly choose from, of course the reporting client is excluded
@@ -301,7 +301,7 @@ func SecreteShare(reportingClient *Client, Shuffle_PubKeys []*datastruct.Shuffle
 			return nil, err
 		}
 		symmetric_key := aes.DeriveKeyFromSHA256(intended_client_SharedSecret, 16) // 16 bytes for AES-128, 24 bytes for AES-192, 32 bytes for AES-256
-		// fmt.Println(symmetric_key)
+		// //(symmetric_key)
 		encryptedData_y, err := aes.Encrypt(shares[i].Value, symmetric_key)
 		if err != nil {
 			log.Fatalf("%v", err)
@@ -555,8 +555,6 @@ func ClientGenerateChallengeDecryptionProof_NonInteractive(
 
 func (reportingClient *Client) ClientShuffle(req *datastruct.ShufflePhaseAuditorRequest, reply *datastruct.ShufflePhaseAuditorReply) error {
 
-	start := time.Now()
-
 	if req.Status == 0 {
 		reply.Status = true
 		reportingClient.ShuffleTime = 0.01
@@ -565,6 +563,7 @@ func (reportingClient *Client) ClientShuffle(req *datastruct.ShufflePhaseAuditor
 		return nil
 	}
 
+	start_shuffle := time.Now()
 	reply.ShufflerID = reportingClient.ID
 
 	reply.ZKProofs = datastruct.ZKRecords{}
@@ -750,7 +749,7 @@ func (reportingClient *Client) ClientShuffle(req *datastruct.ShufflePhaseAuditor
 	// ****** end of zk proof of encryption for tags
 
 	fmt.Print(reportingClient.ID)
-	fmt.Println(" shuffling the entries, this is where we generate permuation matrix")
+	//(" shuffling the entries, this is where we generate permuation matrix")
 
 	permutationMatrix := zklib.GeneratePermutationMatrix(len(database.Entries))
 
@@ -762,13 +761,6 @@ func (reportingClient *Client) ClientShuffle(req *datastruct.ShufflePhaseAuditor
 		reply.Status = false
 		return err
 	}
-
-	// check if this is the first shuffle
-	// first_shuffle := true
-	// if len(database.Shufflers_info) > 0 {
-	// 	// not first shuffle
-	// 	first_shuffle = false
-	// }
 
 	client_count := len(database.Entries)
 	database.Shufflers_info = []*datastruct.ShuffleRecords{}
@@ -785,32 +777,6 @@ func (reportingClient *Client) ClientShuffle(req *datastruct.ShufflePhaseAuditor
 	// randomize the entries/ encrypt the entries
 	for i := 0; i < len(database.Entries); i++ {
 		rk := [][]byte{}
-		// encrypt and append g_r_i_k
-		// r_i_k := elgamal.Generate_Random_Dice_seed(reportingClient.Curve)
-		// g_r_i_k, err := elgamal.ECDH_bytes(reportingClient.G_shuffle, r_i_k)
-		// if err != nil {
-		// 	log.Fatalf("%v", err)
-		// 	reply.Status = false
-		// 	return err
-		// }
-		// // append the g_r_i_k to the entry shufflers
-		// database.Entries[i].Shufflers = append(database.Entries[i].Shufflers, g_r_i_k)
-		// shared_h_r_i_k, err := elgamal.ECDH_bytes(g_r_i_k, reportingClient.ShuffleKey.Bytes())
-		// if err != nil {
-		// 	log.Fatalf("%v", err)
-		// 	reply.Status = false
-		// 	return err
-		// }
-		// /// encrypt the entry again with the shared key
-		// database.Entries[i].Cert_times_h_r10, err = EncryptSegments(shared_h_r_i_k, database.Entries[i].Cert_times_h_r10)
-		// if err != nil {
-		// 	log.Fatalf("%v", err)
-		// 	reply.Status = false
-		// 	return err
-		// }
-		// // fmt.Println(len(database.Entries[i].Shufflers))
-		// if !first_shuffle {
-		/// not the first shuffle, re-randomize the previous shufflers
 		for j := 0; j < len(database.Entries[i].Shufflers); j++ {
 			shuffler_info := database.Shufflers_info[j]
 			keys, err := LocatePublicKeyWithID(shuffler_info.ID, database.Shuffle_PubKeys)
@@ -860,17 +826,6 @@ func (reportingClient *Client) ClientShuffle(req *datastruct.ShufflePhaseAuditor
 	}
 
 	/// append the client info
-	// client_count := len(database.Entries)
-	// database.Shufflers_info = []*datastruct.ShuffleRecords{}
-	// for i := 0; i < client_count; i++ {
-	// 	// should just include everyone
-	// 	client_info := &datastruct.ShuffleRecords{
-	// 		ID: i,
-	// 	}
-	// 	database.Shufflers_info = append(database.Shufflers_info, client_info)
-	// }
-
-	// database.Shufflers_info = append(database.Shufflers_info, client_info)
 
 	// *** zero knowledge shuffling proof
 	inverse_permutationMatrix, err := zklib.InversePermutationMatrix(permutationMatrix)
@@ -879,7 +834,7 @@ func (reportingClient *Client) ClientShuffle(req *datastruct.ShufflePhaseAuditor
 		reply.Status = false
 		return err
 	}
-	// fmt.Println(reportingClient.H_shuffle)
+	// //(reportingClient.H_shuffle)
 
 	X_primes_permutated, err := permuteByteSlicesWithMatrix(permutationMatrix, X_primes)
 	if err != nil {
@@ -933,22 +888,20 @@ func (reportingClient *Client) ClientShuffle(req *datastruct.ShufflePhaseAuditor
 	l_t := 160
 	l_s := 16 // a small security parameter
 	p, q, p_prime, q_prime := database.RSA_P, database.RSA_Q, database.RSA_subgroup_p_prime, database.RSA_subgroup_q_prime
-	// fmt.Println(p, q, p_prime, q_prime)
+
 	if err != nil {
 		log.Fatalf("%v", err)
 		reply.Status = false
 		return err
 	}
-	// fmt.Println("Found the group and subgroup primes.")
+
 	N := new(big.Int).Mul(p, q)
-	// fmt.Println(N)
 	order_of_g := new(big.Int).Mul(p_prime, q_prime)
 	l_r := order_of_g.BitLen() // the order of the unique subgroup can be huge so IDK what to put here
-	// fmt.Println("Security parameter l_r order of g", order_of_g.BitLen())
+
 	l_s_plus_l_r := l_s + l_r
 
 	gs := zklib.SampleNGenerators(p_prime, q_prime, n+2)
-	// fmt.Println(gs)
 
 	// generating ds
 	ds := make([]*big.Int, n)
@@ -1014,7 +967,7 @@ func (reportingClient *Client) ClientShuffle(req *datastruct.ShufflePhaseAuditor
 			panic(err)
 		}
 		if ds[i].Cmp(big.NewInt(0)) < 0 {
-			// fmt.Println("detected negative ds[i] V_prime_X")
+			// //("detected negative ds[i] V_prime_X")
 			X_primes_encrypted_and_permutated_i_d_i, err = elgamal.ReturnNegative(X_primes_encrypted_and_permutated_i_d_i)
 			if err != nil {
 				panic(err)
@@ -1042,7 +995,7 @@ func (reportingClient *Client) ClientShuffle(req *datastruct.ShufflePhaseAuditor
 			panic(err)
 		}
 		if ds[i].Cmp(big.NewInt(0)) < 0 {
-			// fmt.Println("detected negative ds[i] V_prime_Y")
+			// //("detected negative ds[i] V_prime_Y")
 			Y_primes_encrypted_and_permutated_i_d_i, err = elgamal.ReturnNegative(Y_primes_encrypted_and_permutated_i_d_i)
 			if err != nil {
 				panic(err)
@@ -1069,7 +1022,7 @@ func (reportingClient *Client) ClientShuffle(req *datastruct.ShufflePhaseAuditor
 				panic(err)
 			}
 			if ds[i].Cmp(big.NewInt(0)) < 0 {
-				// fmt.Println("detected negative ds[i]")
+				// //("detected negative ds[i]")
 				Ci_di, err = elgamal.ReturnNegative(Ci_di)
 				if err != nil {
 					panic(err)
@@ -1108,7 +1061,7 @@ func (reportingClient *Client) ClientShuffle(req *datastruct.ShufflePhaseAuditor
 			Big_Vs[j], err = elgamal.Encrypt(Big_Vs[j], Enc_B)
 		}
 	}
-	// fmt.Println(len(Bs) == len(database.Shufflers_info))
+
 	// submit shuffled entries, tags(X_primes_encrypted_and_permutated, Y_primes_encrypted_and_permutated), commitments, and Vs to the auditor
 	// auditor will in turn, generate the challenges
 	lambdas := ClientGenerateChallengeShufflingProof_NonInteractive_Groth_And_Lu(
@@ -1126,7 +1079,7 @@ func (reportingClient *Client) ClientShuffle(req *datastruct.ShufflePhaseAuditor
 		p_prime,                           // RSA_subgroup_p_prime *big.Int,
 		q_prime)                           // RSA_subgroup_q_prime *big.Int,
 	// gs,                                // RSA_subgroup_generators []*big.Int,
-	// database.Shufflers_info)           // Updated_Shufflers_info []*ShuffleRecords
+	// )           // Updated_Shufflers_info []*ShuffleRecords
 
 	if err != nil {
 		log.Fatalf("%v", err)
@@ -1148,9 +1101,9 @@ func (reportingClient *Client) ClientShuffle(req *datastruct.ShufflePhaseAuditor
 
 	/// generate Z_ks **** hard part
 	Z_ks := [][]byte{}
-	// fmt.Println(len(R_l_k))
-	// fmt.Println(len(R_l_k[0]))
-	// fmt.Println(len(Bs))
+	// //(len(R_l_k))
+	// //(len(R_l_k[0]))
+	// //(len(Bs))
 	for k := 0; k < len(database.Shufflers_info); k++ {
 		Z_k := zklib.SetBigIntWithBytes(Bs[k])
 		for l := 0; l < n; l++ {
@@ -1270,7 +1223,7 @@ func (reportingClient *Client) ClientShuffle(req *datastruct.ShufflePhaseAuditor
 	//**** end of the zero knowledge Proof of Knowledge decryption Done!
 	reply.Status = true
 
-	total_time := time.Since(start)
+	total_time := time.Since(start_shuffle)
 	reportingClient.ShuffleTime = total_time.Seconds()
 
 	shuffle_up, err := json.Marshal(reply)
@@ -1295,23 +1248,23 @@ func ClientReveal(reportingClient *Client, database datastruct.Database, zkdatab
 	// check the zk proof first
 
 	/// untrim the zkrecords to fit in the function
-	// fmt.Println("Performing verification checks of ", len(zkdatabase), " zk proofs for client ", reportingClient.ID)
-	// fmt.Println("zkdatabase: ", zkdatabase)
+	// //("Performing verification checks of ", len(zkdatabase), " zk proofs for client ", reportingClient.ID)
+	// //("zkdatabase: ", zkdatabase)
 	for i := 0; i < len(zkdatabase); i++ {
 		if i != len(zkdatabase)-1 {
 			zkdatabase[i].ShuffleProof.EntriesAfterShuffle = zkdatabase[i+1].ShuffleProof.EntriesBeforeShuffle
 		}
 		if !CheckZKProofForOne(zkdatabase[i], database) {
-			fmt.Println("ZK proof failed for client", reportingClient.ID)
+			//("ZK proof failed for client", reportingClient.ID)
 			return datastruct.RevealPhaseReportRevealRequest{
 				ShufflerID:    reportingClient.ID,
 				RevealRecords: datastruct.DecryptRecords{},
 			}, nil
 		}
-		fmt.Println("Checking passed for entry ", i)
+		//("Checking passed for entry ", i)
 	}
 
-	// fmt.Println("ZK proof passed for client", reportingClient.ID)
+	// //("ZK proof passed for client", reportingClient.ID)
 
 	req := datastruct.RevealPhaseReportRevealRequest{
 		ShufflerID:    reportingClient.ID,
@@ -1338,7 +1291,7 @@ func ClientReveal(reportingClient *Client, database datastruct.Database, zkdatab
 		if bytes.Equal(h_test, database.Entries[i].H_r_i1) {
 			// it is my entry
 			fmt.Print(reportingClient.ID)
-			fmt.Println(" found entry")
+			//(" found entry")
 
 			g_first_term_with_shuffle_key, err := elgamal.ECDH_bytes(database.Entries[i].Shufflers[order], reportingClient.ShuffleKey.Bytes())
 			if err != nil {
@@ -1406,7 +1359,7 @@ func ClientReportDecryptedSecret(client *Client, missingClientID int, database d
 		return nil, err
 	}
 	symmetric_key := aes.DeriveKeyFromSHA256(shared_secrete, 16)
-	// fmt.Println(symmetric_key)
+	// //(symmetric_key)
 	decrypted_y, err := aes.Decrypt(missingClientPiece.Encrypted_y, symmetric_key)
 	if err != nil {
 		log.Fatalf("%v", err)
@@ -1447,7 +1400,7 @@ func CheckZKProofForOne(zkproof *datastruct.ZKRecords, database datastruct.Datab
 	z2s := uploaded_zk.EncryptionProof.Z2s
 	z3s := uploaded_zk.EncryptionProof.Z3s
 
-	// fmt.Println(S_x)
+	// //(S_x)
 	for i := 0; i < len(z1s); i++ {
 		// first challenge
 		X_z1, err := elgamal.ECDH_bytes(uploaded_zk.EncryptionProof.X_originals[i], z1s[i])
@@ -1485,12 +1438,12 @@ func CheckZKProofForOne(zkproof *datastruct.ZKRecords, database datastruct.Datab
 		}
 
 		if !bytes.Equal(first_challenge_left_hand, first_challenge_right_hand) {
-			fmt.Println("First challenge failed for client", proving_client)
+			//("First challenge failed for client", proving_client)
 			// reply.Status = false
 			return false
 		}
 		// else {
-		// 	fmt.Println("First challenge PASSED for client", proving_client.ID)
+		// 	//("First challenge PASSED for client", proving_client.ID)
 		// }
 
 		// second challenge
@@ -1529,17 +1482,17 @@ func CheckZKProofForOne(zkproof *datastruct.ZKRecords, database datastruct.Datab
 		}
 
 		if !bytes.Equal(second_challenge_left_hand, second_challenge_right_hand) {
-			fmt.Println("Second challenge failed for client", proving_client)
+			//("Second challenge failed for client", proving_client)
 			// reply.Status = false
 			return false
 		}
 		// else {
-		// 	fmt.Println("Second challenge PASSED for client", proving_client.ID)
+		// 	//("Second challenge PASSED for client", proving_client.ID)
 		// }
 
 	}
 
-	fmt.Println("ZK Proof for encryption is verified for client ", proving_client)
+	//("ZK Proof for encryption is verified for client ", proving_client)
 	// ********* shuffle check
 	n := len(uploaded_zk.ShuffleProof.EntriesAfterShuffle)
 	gs := uploaded_zk.ShuffleProof.RSA_subgroup_generators
@@ -1560,12 +1513,12 @@ func CheckZKProofForOne(zkproof *datastruct.ZKRecords, database datastruct.Datab
 	for _, t := range ts {
 		sum_ts.Add(sum_ts, zklib.SetBigIntWithBytes(t))
 	}
-	// fmt.Println("Sum of fs:", sum)
-	// fmt.Println("Sum of ts:", sum_ts)
+	// //("Sum of fs:", sum)
+	// //("Sum of ts:", sum_ts)
 	if sum.Cmp(sum_ts) == 0 {
-		fmt.Println("First Test PASSED!!!!!!!!!Sum of fs is equal to sum of ts")
+		//("First Test PASSED!!!!!!!!!Sum of fs is equal to sum of ts")
 	} else {
-		fmt.Println("Sum of fs is not equal to sum of ts")
+		//("Sum of fs is not equal to sum of ts")
 		// reply.Status = false
 		return false
 	}
@@ -1585,7 +1538,7 @@ func CheckZKProofForOne(zkproof *datastruct.ZKRecords, database datastruct.Datab
 	// / conducting second check
 	second_condition_right_hand_side := zklib.Generate_commitment(gs, fs, f_delta, small_z.Bytes(), N)
 	// fmt.Print("second_condition_right_hand_side ")
-	// fmt.Println(second_condition_right_hand_side)
+	// //(second_condition_right_hand_side)
 	second_condition_left_hand_side := new(big.Int).Set(uploaded_zk.ShuffleProof.Commitments[n])
 	for i := 0; i < n; i++ {
 		second_condition_left_hand_side = new(big.Int).Mul(second_condition_left_hand_side, new(big.Int).Exp(uploaded_zk.ShuffleProof.Commitments[i], zklib.SetBigIntWithBytes(ts[i]), N))
@@ -1593,12 +1546,12 @@ func CheckZKProofForOne(zkproof *datastruct.ZKRecords, database datastruct.Datab
 	second_condition_left_hand_side = new(big.Int).Mod(second_condition_left_hand_side, N)
 
 	// fmt.Print("second_condition_left_hand_side ")
-	// fmt.Println(second_condition_left_hand_side)
+	// //(second_condition_left_hand_side)
 	// compare the two sides
 	if second_condition_left_hand_side.Cmp(second_condition_right_hand_side) == 0 {
-		fmt.Println("Second Test PASSED!!!!!!!!!")
+		//("Second Test PASSED!!!!!!!!!")
 	} else {
-		fmt.Println("they are not equal! Failed???????")
+		//("they are not equal! Failed???????")
 		// reply.Status = false
 		return false
 	}
@@ -1615,7 +1568,7 @@ func CheckZKProofForOne(zkproof *datastruct.ZKRecords, database datastruct.Datab
 			}
 			// check if fs[i] is negative
 			if fs[i].Cmp(big.NewInt(0)) < 0 {
-				// fmt.Println("detected negative fs[i]")
+				// //("detected negative fs[i]")
 				C_i_f_i, err = elgamal.ReturnNegative(C_i_f_i)
 				if err != nil {
 					panic(err)
@@ -1655,12 +1608,12 @@ func CheckZKProofForOne(zkproof *datastruct.ZKRecords, database datastruct.Datab
 
 		// compare the two sides
 		if !bytes.Equal(third_check_left_hand_side, third_check_right_hand_side) {
-			fmt.Println("Third Test FAILED????????", k)
+			//("Third Test FAILED????????", k)
 			// reply.Status = false
 			return false
 		}
 	}
-	fmt.Println("Third Test concerning the cyphertext shuffling PASSED!!!!!!!!!")
+	//("Third Test concerning the cyphertext shuffling PASSED!!!!!!!!!")
 
 	// fourth check for tag X
 	fourth_condition_left_hand_side := elgamal.ReturnInfinityPoint()
@@ -1672,7 +1625,7 @@ func CheckZKProofForOne(zkproof *datastruct.ZKRecords, database datastruct.Datab
 		}
 		// check if fs[i] is negative
 		if fs[i].Cmp(big.NewInt(0)) < 0 {
-			// fmt.Println("detected negative fs[i]")
+			// //("detected negative fs[i]")
 			T_i_f_i, err = elgamal.ReturnNegative(T_i_f_i)
 			if err != nil {
 				panic(err)
@@ -1686,12 +1639,12 @@ func CheckZKProofForOne(zkproof *datastruct.ZKRecords, database datastruct.Datab
 	fourth_condition_right_hand_side := uploaded_zk.ShuffleProof.V_prime_X
 	// find the public key of the shuffler
 	shuffler_keys, err := LocatePublicKeyWithID(uploaded_zk.ShufflerID, database.Shuffle_PubKeys)
-	// fmt.Println("found this guys id ", uploaded_zk.ShufflerID)
+	// //("found this guys id ", uploaded_zk.ShufflerID)
 	if err != nil {
 		panic(err)
 	}
 	encrypted_one_with_Z_prime, err := elgamal.ECDH_bytes_P256_arbitrary_scalar_len(shuffler_keys.H_i, Z_prime.Bytes())
-	// fmt.Println(shuffler_keys.H_i)
+	// //(shuffler_keys.H_i)
 	if err != nil {
 		panic(err)
 	}
@@ -1713,9 +1666,9 @@ func CheckZKProofForOne(zkproof *datastruct.ZKRecords, database datastruct.Datab
 	}
 	// compare the two sides
 	if bytes.Equal(fourth_condition_left_hand_side, fourth_condition_right_hand_side) {
-		fmt.Println("Fourth Test PASSED!!!!!!!!!")
+		//("Fourth Test PASSED!!!!!!!!!")
 	} else {
-		fmt.Println("Fourth Test FAILED????????")
+		//("Fourth Test FAILED????????")
 		// reply.Status = false
 		return false
 	}
@@ -1732,7 +1685,7 @@ func CheckZKProofForOne(zkproof *datastruct.ZKRecords, database datastruct.Datab
 		}
 		// check if fs[i] is negative
 		if fs[i].Cmp(big.NewInt(0)) < 0 {
-			// fmt.Println("detected negative fs[i]")
+			// //("detected negative fs[i]")
 			T_i_f_i, err = elgamal.ReturnNegative(T_i_f_i)
 			if err != nil {
 				panic(err)
@@ -1763,9 +1716,9 @@ func CheckZKProofForOne(zkproof *datastruct.ZKRecords, database datastruct.Datab
 	}
 	// compare the two sides
 	if bytes.Equal(fifth_condition_left_hand_side, fifth_condition_right_hand_side) {
-		fmt.Println("Fifth Test PASSED!!!!!!!!!")
+		//("Fifth Test PASSED!!!!!!!!!")
 	} else {
-		fmt.Println("Fifth Test FAILED????????")
+		//("Fifth Test FAILED????????")
 		// reply.Status = false
 		return false
 	}
