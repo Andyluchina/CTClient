@@ -1296,7 +1296,7 @@ func ClientReveal(reportingClient *Client, database datastruct.Database, zkdatab
 
 	/// untrim the zkrecords to fit in the function
 	fmt.Println("Performing verification checks of ", len(zkdatabase), " zk proofs for client ", reportingClient.ID)
-	fmt.Println(zkdatabase)
+	fmt.Println("zkdatabase: ", zkdatabase)
 	for i := 0; i < len(zkdatabase); i++ {
 		if i != len(zkdatabase)-1 {
 			zkdatabase[i].ShuffleProof.EntriesAfterShuffle = zkdatabase[i+1].ShuffleProof.EntriesBeforeShuffle
