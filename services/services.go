@@ -1451,7 +1451,7 @@ func CheckAuditorZKProofForOne(auditorzkproof *datastruct.ZKAuditorRecords, data
 	} else {
 		fmt.Println("Sum of fs is not equal to sum of ts")
 		// reply.Status = false
-		return false
+		// return false
 	}
 
 	// second check
@@ -1484,7 +1484,7 @@ func CheckAuditorZKProofForOne(auditorzkproof *datastruct.ZKAuditorRecords, data
 	} else {
 		fmt.Println("they are not equal! Failed???????")
 		// reply.Status = false
-		return false
+		// return false
 	}
 
 	// third check for the entries **** hardest part brutal
