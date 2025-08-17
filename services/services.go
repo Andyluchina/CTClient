@@ -1270,9 +1270,9 @@ func ClientReveal(reportingClient *Client, database datastruct.Database, zkdatab
 	// check the auditor zk info
 	// //("Performing verification checks of ", len(auditorZKInfo), " auditor zk proofs for client ", reportingClient.ID)
 	for i := 0; i < len(auditorZKInfo); i++ {
-		if i != len(zkdatabase)-1 {
-			auditorZKInfo[i].AuditorEncryptionRecord.EntriesAfterShuffle = auditorZKInfo[i+1].AuditorEncryptionRecord.EntriesBeforeShuffle
-		}
+		// if i != len(zkdatabase)-1 {
+		// 	auditorZKInfo[i].AuditorEncryptionRecord.EntriesAfterShuffle = auditorZKInfo[i+1].AuditorEncryptionRecord.EntriesBeforeShuffle
+		// }
 		if !CheckAuditorZKProofForOne(auditorZKInfo[i], database) {
 			//("Auditor ZK proof failed for client", reportingClient.ID)
 			return datastruct.RevealPhaseReportRevealRequest{
