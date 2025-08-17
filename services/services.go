@@ -1447,9 +1447,9 @@ func CheckAuditorZKProofForOne(auditorzkproof *datastruct.ZKAuditorRecords, data
 	// //("Sum of fs:", sum)
 	// //("Sum of ts:", sum_ts)
 	if sum.Cmp(sum_ts) == 0 {
-		//("First Test PASSED!!!!!!!!!Sum of fs is equal to sum of ts")
+		fmt.Println("First Test PASSED!!!!!!!!!Sum of fs is equal to sum of ts")
 	} else {
-		//("Sum of fs is not equal to sum of ts")
+		fmt.Println("Sum of fs is not equal to sum of ts")
 		// reply.Status = false
 		return false
 	}
@@ -1480,9 +1480,9 @@ func CheckAuditorZKProofForOne(auditorzkproof *datastruct.ZKAuditorRecords, data
 	// //(second_condition_left_hand_side)
 	// compare the two sides
 	if second_condition_left_hand_side.Cmp(second_condition_right_hand_side) == 0 {
-		//("Second Test PASSED!!!!!!!!!")
+		fmt.Println("Second Test PASSED!!!!!!!!!")
 	} else {
-		//("they are not equal! Failed???????")
+		fmt.Println("they are not equal! Failed???????")
 		// reply.Status = false
 		return false
 	}
@@ -1544,7 +1544,7 @@ func CheckAuditorZKProofForOne(auditorzkproof *datastruct.ZKAuditorRecords, data
 			return false
 		}
 	}
-	//("Third Test concerning the cyphertext shuffling PASSED!!!!!!!!!")
+	fmt.Println("Third Test concerning the cyphertext shuffling PASSED!!!!!!!!!")
 	return true
 
 }
