@@ -279,7 +279,7 @@ func main() {
 		// perform reveal
 		reveal_start := time.Now()
 
-		reveal_res_req, err := services.ClientReveal(client, reveal_reply.Database, reveal_reply.ZK_info)
+		reveal_res_req, err := services.ClientReveal(client, reveal_reply.Database, reveal_reply.ZK_info, reveal_reply.AuditorZKInfo)
 
 		reveal_elapsed := time.Since(reveal_start) // Calculate elapsed time
 		reveal_elapsedSeconds := reveal_elapsed.Seconds()
@@ -382,6 +382,8 @@ func main() {
 	stats.ShuffleTime = client.ShuffleTime
 	stats.DownloadBytesShuffle = client.ShuffleDownload
 	stats.UploadBytesShuffle = client.ShuffleUpload
+	stats.AuditorZKCheckTime = client.AuditorZKCheckTime
+
 	// report the stats to the collector
 	collector_interface, err := rpc.DialHTTP("tcp", collector_address)
 

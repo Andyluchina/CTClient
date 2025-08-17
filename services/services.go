@@ -23,26 +23,27 @@ import (
 )
 
 type Client struct {
-	ID               int
-	ReportingKey     *ecdh.PrivateKey
-	ShuffleKey       *ecdh.PrivateKey
-	ReportingValue   []byte
-	Curve            ecdh.Curve
-	G_report         []byte /// init point needs to be different for every client
-	H_report         []byte
-	G_shuffle        []byte /// init point needs to be different for every client
-	H_shuffle        []byte
-	DH_Pub_H         []byte /// pub key for secrete sharing
-	DH_Pub_private   []byte
-	InitialG_ri0     []byte
-	TotalClients     uint32
-	RevealThreshold  uint32
-	Shamir_curve     *curves.Curve
-	MyIP             string
-	ShuffleTime      float64
-	ShuffleUpload    int
-	ShuffleDownload  int
-	ShuffleUnderKeys int
+	ID                 int
+	ReportingKey       *ecdh.PrivateKey
+	ShuffleKey         *ecdh.PrivateKey
+	ReportingValue     []byte
+	Curve              ecdh.Curve
+	G_report           []byte /// init point needs to be different for every client
+	H_report           []byte
+	G_shuffle          []byte /// init point needs to be different for every client
+	H_shuffle          []byte
+	DH_Pub_H           []byte /// pub key for secrete sharing
+	DH_Pub_private     []byte
+	InitialG_ri0       []byte
+	TotalClients       uint32
+	RevealThreshold    uint32
+	Shamir_curve       *curves.Curve
+	MyIP               string
+	ShuffleTime        float64
+	ShuffleUpload      int
+	ShuffleDownload    int
+	ShuffleUnderKeys   int
+	AuditorZKCheckTime float64
 }
 
 // NewAuditor creates a new Auditor instance
@@ -1244,7 +1245,7 @@ func (reportingClient *Client) ClientShuffle(req *datastruct.ShufflePhaseAuditor
 	return nil
 }
 
-func ClientReveal(reportingClient *Client, database datastruct.Database, zkdatabase []*datastruct.ZKRecords) (datastruct.RevealPhaseReportRevealRequest, error) {
+func ClientReveal(reportingClient *Client, database datastruct.Database, zkdatabase []*datastruct.ZKRecords, auditorZKInfo []*datastruct.ZKAuditorRecords) (datastruct.RevealPhaseReportRevealRequest, error) {
 
 	// check the zk proof first
 
@@ -1265,6 +1266,25 @@ func ClientReveal(reportingClient *Client, database datastruct.Database, zkdatab
 		//("Checking passed for entry ", i)
 	}
 
+	start_auditor_check := time.Now()
+	// check the auditor zk info
+	// //("Performing verification checks of ", len(auditorZKInfo), " auditor zk proofs for client ", reportingClient.ID)
+	for i := 0; i < len(auditorZKInfo); i++ {
+		if i != len(zkdatabase)-1 {
+			auditorZKInfo[i].AuditorEncryptionRecord.EntriesAfterShuffle = auditorZKInfo[i+1].AuditorEncryptionRecord.EntriesBeforeShuffle
+		}
+		if !CheckAuditorZKProofForOne(auditorZKInfo[i], database) {
+			//("Auditor ZK proof failed for client", reportingClient.ID)
+			return datastruct.RevealPhaseReportRevealRequest{
+				ShufflerID:    reportingClient.ID,
+				RevealRecords: datastruct.DecryptRecords{},
+			}, nil
+		}
+		//("Auditor Checking passed for entry ", i)
+	}
+
+	total_auditor_check_time := time.Since(start_auditor_check)
+	reportingClient.AuditorZKCheckTime = total_auditor_check_time.Seconds()
 	// //("ZK proof passed for client", reportingClient.ID)
 
 	req := datastruct.RevealPhaseReportRevealRequest{
@@ -1401,6 +1421,135 @@ func ClientReportDecryptedSecret(client *Client, missingClientID int, database d
 		DecryptPieces: res_d_j_i,
 	}, nil
 }
+
+func CheckAuditorZKProofForOne(auditorzkproof *datastruct.ZKAuditorRecords, database datastruct.Database) bool {
+	//("ZK Proof for encryption is verified for client ", proving_client)
+	// ********* shuffle check
+	n := len(auditorzkproof.AuditorEncryptionRecord.EntriesAfterShuffle)
+	gs := auditorzkproof.AuditorEncryptionRecord.RSA_subgroup_generators
+	N := new(big.Int).Mul(database.RSA_P, database.RSA_Q)
+	// first check
+	ts := auditorzkproof.AuditorEncryptionRecord.ChallengesLambda
+	// / sum up fs and check if it is equal to sum of ts
+	sum := big.NewInt(0)
+
+	fs := auditorzkproof.AuditorEncryptionRecord.Fs
+	small_z := auditorzkproof.AuditorEncryptionRecord.SmallZ
+	Z_ks := auditorzkproof.AuditorEncryptionRecord.Z_ks
+
+	for _, f := range fs {
+		sum.Add(sum, f)
+	}
+	sum_ts := big.NewInt(0)
+	for _, t := range ts {
+		sum_ts.Add(sum_ts, zklib.SetBigIntWithBytes(t))
+	}
+	// //("Sum of fs:", sum)
+	// //("Sum of ts:", sum_ts)
+	if sum.Cmp(sum_ts) == 0 {
+		//("First Test PASSED!!!!!!!!!Sum of fs is equal to sum of ts")
+	} else {
+		//("Sum of fs is not equal to sum of ts")
+		// reply.Status = false
+		return false
+	}
+
+	// second check
+	// calculate f_delta
+	f_delta := big.NewInt(0)
+	// sum of f squared
+	for _, f := range fs {
+		f_delta.Add(f_delta, new(big.Int).Mul(f, f))
+	}
+	// minus sum of ts squared
+	for _, t := range ts {
+		f_delta.Sub(f_delta, new(big.Int).Mul(zklib.SetBigIntWithBytes(t), zklib.SetBigIntWithBytes(t)))
+	}
+
+	// / conducting second check
+	second_condition_right_hand_side := zklib.Generate_commitment(gs, fs, f_delta, small_z.Bytes(), N)
+	// fmt.Print("second_condition_right_hand_side ")
+	// //(second_condition_right_hand_side)
+	second_condition_left_hand_side := new(big.Int).Set(auditorzkproof.AuditorEncryptionRecord.Commitments[n])
+	for i := 0; i < n; i++ {
+		second_condition_left_hand_side = new(big.Int).Mul(second_condition_left_hand_side, new(big.Int).Exp(auditorzkproof.AuditorEncryptionRecord.Commitments[i], zklib.SetBigIntWithBytes(ts[i]), N))
+	}
+	second_condition_left_hand_side = new(big.Int).Mod(second_condition_left_hand_side, N)
+
+	// fmt.Print("second_condition_left_hand_side ")
+	// //(second_condition_left_hand_side)
+	// compare the two sides
+	if second_condition_left_hand_side.Cmp(second_condition_right_hand_side) == 0 {
+		//("Second Test PASSED!!!!!!!!!")
+	} else {
+		//("they are not equal! Failed???????")
+		// reply.Status = false
+		return false
+	}
+
+	// third check for the entries **** hardest part brutal
+	// k means the index for individual pieces of the entry
+	for k := 0; k < len(auditorzkproof.AuditorEncryptionRecord.EntriesAfterShuffle[0]); k++ {
+		third_check_left_hand_side := elgamal.ReturnInfinityPoint()
+		for i := 0; i < n; i++ {
+			C_i := auditorzkproof.AuditorEncryptionRecord.EntriesAfterShuffle[i][k]
+			C_i_f_i, err := elgamal.ECDH_bytes_P256_arbitrary_scalar_len(C_i, fs[i].Bytes())
+			if err != nil {
+				panic(err)
+			}
+			// check if fs[i] is negative
+			if fs[i].Cmp(big.NewInt(0)) < 0 {
+				// //("detected negative fs[i]")
+				C_i_f_i, err = elgamal.ReturnNegative(C_i_f_i)
+				if err != nil {
+					panic(err)
+				}
+			}
+			third_check_left_hand_side, err = elgamal.Encrypt(third_check_left_hand_side, C_i_f_i)
+			if err != nil {
+				panic(err)
+			}
+		}
+
+		third_check_right_hand_side := auditorzkproof.AuditorEncryptionRecord.Big_Vs[k]
+		for i := 0; i < n; i++ {
+			c_i := auditorzkproof.AuditorEncryptionRecord.EntriesBeforeShuffle[i][k]
+			c_i_lambda_i, err := elgamal.ECDH_bytes_P256_arbitrary_scalar_len(c_i, ts[i])
+			if err != nil {
+				panic(err)
+			}
+			third_check_right_hand_side, err = elgamal.Encrypt(third_check_right_hand_side, c_i_lambda_i)
+		}
+		// find the public key of the shuffler
+		for i := 0; i < len(auditorzkproof.AuditorEncryptionRecord.Updated_Shufflers_info); i++ {
+			updated_shufflers := auditorzkproof.AuditorEncryptionRecord.Updated_Shufflers_info[i]
+			shuffler_keys, err := LocatePublicKeyWithID(updated_shufflers.ID, database.Shuffle_PubKeys)
+			if err != nil {
+				panic(err)
+			}
+			encrypted_one_with_Z_k, err := elgamal.ECDH_bytes_P256_arbitrary_scalar_len(shuffler_keys.H_i, Z_ks[i])
+			if err != nil {
+				panic(err)
+			}
+			third_check_right_hand_side, err = elgamal.Encrypt(third_check_right_hand_side, encrypted_one_with_Z_k)
+			if err != nil {
+				panic(err)
+			}
+		}
+
+		// compare the two sides
+		if !bytes.Equal(third_check_left_hand_side, third_check_right_hand_side) {
+			//("Third Test FAILED????????", k)
+			// reply.Status = false
+			return false
+		}
+	}
+	//("Third Test concerning the cyphertext shuffling PASSED!!!!!!!!!")
+	return true
+
+}
+
+// encryption check
 
 func CheckZKProofForOne(zkproof *datastruct.ZKRecords, database datastruct.Database) bool {
 	// verify the zk proof that the client provided

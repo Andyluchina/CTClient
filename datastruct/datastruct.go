@@ -193,9 +193,32 @@ type RevealPhaseAcquireDatabaseRequest struct {
 }
 
 type RevealPhaseAcquireDatabaseReply struct {
-	Status   bool
-	Database Database
-	ZK_info  []*ZKRecords
+	Status        bool
+	Database      Database
+	ZK_info       []*ZKRecords
+	AuditorZKInfo []*ZKAuditorRecords
+}
+
+type ZKAuditorRecords struct {
+	ShufflerID              int
+	AuditorEncryptionRecord AuditorEncryptionProofRecord
+}
+
+type AuditorEncryptionProofRecord struct {
+	// recorded before shuffle
+	EntriesBeforeShuffle    [][][]byte
+	RSA_subgroup_generators []*big.Int
+	// commitment
+	EntriesAfterShuffle    [][][]byte
+	Commitments            []*big.Int
+	Big_Vs                 [][]byte
+	Updated_Shufflers_info []*ShuffleRecords
+	//challenges
+	ChallengesLambda [][]byte
+	// Responses
+	Fs     []*big.Int
+	SmallZ *big.Int
+	Z_ks   [][]byte
 }
 
 type RevealPhaseReportRevealRequest struct {
@@ -245,6 +268,7 @@ type ClientStats struct {
 	DownloadBytesReveal          int
 	UploadBytesFT                int
 	DownloadBytesFT              int
+	AuditorZKCheckTime           float64
 }
 
 type ReportStatsReply struct {
