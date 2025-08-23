@@ -169,13 +169,42 @@ func main() {
 	report_s := false
 	var Shuffle_PubKeys []*datastruct.ShufflePubKeys
 	for !report_s {
-		err = network_interface.Call("CTLogCheckerAuditor.ReportInitialEntry", init_report_req, &init_report_reply)
-		if err != nil {
-			log.Fatal("arith error:", err)
+		// ensure we have a live client
+		if network_interface == nil {
+			network_interface = dial()
+			if network_interface == nil { // couldn't connect; retry immediately
+				continue
+			}
 		}
-		if init_report_reply.Status {
-			report_s = true
-			Shuffle_PubKeys = init_report_reply.Shuffle_PubKeys
+
+		timeout := 30 * time.Second
+
+		done := make(chan *rpc.Call, 1)
+		call := network_interface.Go("CTLogCheckerAuditor.ReportInitialEntry", init_report_req, &init_report_reply, done)
+
+		select {
+		case res := <-call.Done:
+			if res.Error == nil {
+				if init_report_reply.Status {
+					report_s = true
+					Shuffle_PubKeys = init_report_reply.Shuffle_PubKeys
+				} else {
+					log.Printf("init responded but not accepted (Status=false); retrying")
+					// immediate retry with same connection
+				}
+			} else if errors.Is(res.Error, rpc.ErrShutdown) {
+				log.Printf("init failed: connection is shut down; redialing %s", server_address)
+				_ = network_interface.Close()
+				network_interface = nil // force redial next iteration
+			} else {
+				log.Printf("init failed: %v (retrying)", res.Error)
+				// immediate retry with same connection
+			}
+
+		case <-time.After(timeout):
+			log.Printf("init timed out after %s; redialing %s", timeout, server_address)
+			_ = network_interface.Close() // aborts in-flight call (it will finish with ErrShutdown internally)
+			network_interface = nil       // force redial next iteration
 		}
 	}
 
@@ -217,12 +246,41 @@ func main() {
 
 	report_s_secrete := false
 	for !report_s_secrete {
-		err = network_interface.Call("CTLogCheckerAuditor.ReportInitialEntrySecreteShare", init_report_secrete_req, &init_report_secrete_reply)
-		if err != nil {
-			log.Fatal("arith error:", err)
+		// ensure we have a live client
+		if network_interface == nil {
+			network_interface = dial()
+			if network_interface == nil { // couldn't connect; retry immediately
+				continue
+			}
 		}
-		if init_report_secrete_reply.Status {
-			report_s_secrete = true
+
+		timeout := 30 * time.Second
+
+		done := make(chan *rpc.Call, 1)
+		call := network_interface.Go("CTLogCheckerAuditor.ReportInitialEntrySecreteShare", init_report_secrete_req, &init_report_secrete_reply, done)
+
+		select {
+		case res := <-call.Done:
+			if res.Error == nil {
+				if init_report_secrete_reply.Status {
+					report_s_secrete = true
+				} else {
+					log.Printf("init sec responded but not accepted (Status=false); retrying")
+					// immediate retry with same connection
+				}
+			} else if errors.Is(res.Error, rpc.ErrShutdown) {
+				log.Printf("init sec failed: connection is shut down; redialing %s", server_address)
+				_ = network_interface.Close()
+				network_interface = nil // force redial next iteration
+			} else {
+				log.Printf("init sec failed: %v (retrying)", res.Error)
+				// immediate retry with same connection
+			}
+
+		case <-time.After(timeout):
+			log.Printf("init sec timed out after %s; redialing %s", timeout, server_address)
+			_ = network_interface.Close() // aborts in-flight call (it will finish with ErrShutdown internally)
+			network_interface = nil       // force redial next iteration
 		}
 	}
 
